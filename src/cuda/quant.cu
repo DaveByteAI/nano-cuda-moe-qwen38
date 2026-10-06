@@ -127,6 +127,13 @@ bool supported(uint32_t t) {
     }
 }
 
+bool expert_supported(uint32_t t) {
+    switch (t) {
+        case IQ2_XXS: case IQ2_XS: case IQ2_S: case IQ3_XXS: case IQ3_S: case IQ4_NL: case Q2_0: return true;
+        default: return false;
+    }
+}
+
 void dequant_rows(uint32_t t, const void * W, size_t rb, int M, int K, float * out, cudaStream_t s) {
     check_k(t, K);
     dispatch<DequantRows>(t, W, rb, M, K, out, s);

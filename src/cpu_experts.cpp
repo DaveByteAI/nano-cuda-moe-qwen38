@@ -192,6 +192,16 @@ CpuExperts::CpuExperts(int n_threads) : p_(std::make_unique<Impl>(n_threads)) {}
 CpuExperts::~CpuExperts() = default;
 int CpuExperts::threads() const { return p_->n_threads; }
 
+bool CpuExperts::supports(uint32_t type) {
+    if (type >= GGML_TYPE_COUNT) return false;
+    const ggml_type_traits_cpu * tr = ggml_get_type_traits_cpu(static_cast<ggml_type>(type));
+    return tr && tr->vec_dot && ggml_get_type_traits_cpu(tr->vec_dot_type)->from_float;
+}
+
+const char * CpuExperts::type_name(uint32_t type) {
+    return type < GGML_TYPE_COUNT ? ggml_type_name(static_cast<ggml_type>(type)) : "unknown";
+}
+
 void CpuExperts::run(uint32_t type_gu, uint32_t type_d, size_t gu_bytes, int F, int D, const float * x, int T, const Job * jobs,
                      int n) {
     if (n == 0) return;
