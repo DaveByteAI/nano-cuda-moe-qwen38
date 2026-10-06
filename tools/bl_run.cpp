@@ -1,5 +1,5 @@
 // bl-run: feed a token list through the phase-1 engine, optionally compare every checkpoint with a bl-ref-dump.
-//   bl-run --model SHARD1.gguf --tokens-file F [--ref DIR] [--gen N] [--ctx N]
+//   bl-run --model SHARD1.gguf --tokens-file F [--ref DIR] [--gen N] [--ctx N] [--gpus 0,1 [--layer-split K|auto]]
 // With --ref, each probe of token t is compared with token t's slice of the reference tensor of the same name and
 // occurrence (a layer has two "hc_mixed"); a reference that holds only the last token is compared at the last token.
 #include <chrono>
@@ -70,8 +70,9 @@ std::vector<int> read_tokens(const std::string & path) {
 int main(int argc, char ** argv) {
     std::string model, tokens_file, ref_dir, save_logits, sweep;
     int gen = 0, ctx = 4096, repeat = 1, warm = 0, window = 1, save_last = 0;
-    std::string specs, pf_logits, cache_file, save_cache;
+    std::string specs, pf_logits, cache_file, save_cache, gpus, layer_split;
     float min_p = 0.5f;
+    bool prepass = true;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : ""; };
@@ -91,6 +92,9 @@ int main(int argc, char ** argv) {
         else if (a == "--min-p") min_p = std::stof(next());     // chain another draft while the last one's p >= this
         else if (a == "--cache-file") cache_file = next();      // start with this saved expert cache
         else if (a == "--save-cache") save_cache = next();      // save the expert cache at the end
+        else if (a == "--no-prepass") prepass = false;          // with several files: skip feeding the extra ones first
+        else if (a == "--gpus") gpus = next();                  // several GPUs: the layers split between them
+        else if (a == "--layer-split") layer_split = next();    // the first layer of each later GPU, or auto
         else { std::fprintf(stderr, "unknown argument %s\n", a.c_str()); return 2; }
     }
     if (model.empty() || tokens_file.empty()) {
@@ -107,7 +111,7 @@ int main(int argc, char ** argv) {
         std::vector<int> toks = files[0];
         int T = static_cast<int>(toks.size());
         auto t_load = std::chrono::steady_clock::now();
-        bl::Engine eng(model, ctx, cache_file);
+        bl::Engine eng(model, ctx, cache_file, bl::parse_gpu_split(gpus, layer_split));
         struct SaveAtEnd {   // every return path below
             bl::Engine & e;
             const std::string & path;
@@ -208,7 +212,7 @@ int main(int argc, char ** argv) {
             }
             return 0;
         }
-        for (size_t fi = 1; fi < files.size(); ++fi) {   // the extra files first, the first one last (it is reported)
+        for (size_t fi = 1; prepass && fi < files.size(); ++fi) {   // the extra files first, the first one last (it is reported)
             toks = files[fi];
             T = static_cast<int>(toks.size());
             eng.reset();

@@ -123,6 +123,19 @@ fishing" works.
 `bl-chat --model SHARD1 [--ctx N] [--temp 0.7] [--top-p 0.8] [--top-k 20] [--spec 3] [--think off|low|medium|xhigh] [--system TEXT]`;
 in the chat: `/reset`, `/think low`, `/temp 0.3`, `/stats`, `/exit`.
 
+### Several GPUs (experimental)
+
+`--gpus 0,1` (all three programs) splits the layers between the GPUs: the first runs layers 0 to K-1, the next from K on,
+and the last one also runs the head and the MTP layer. Each GPU caches the routed experts of its own layers, so two
+cards hold about twice the experts; the residual crosses to the next card once per verify window, through pinned
+host memory (no NVLink or peer-to-peer access needed). `--layer-split K` picks K yourself (default `auto`: the K
+whose caches would hold the best-ranked experts). Without `--gpus` nothing changes.
+
+Status: checked as two stages on one GPU (`--gpus 0,0`) - decoding is token-for-token identical to one GPU, the
+prompt path within the run-to-run noise of one GPU - but **not yet run on two real GPUs**. One GPU spends about 30% of
+a decode window waiting for the CPU's experts, which a second card's cache would mostly remove: about 135-140 tok/s is
+the estimate, not a measurement. Reports from two-GPU machines are welcome.
+
 ## Checking accuracy and speed
 
 ```bash

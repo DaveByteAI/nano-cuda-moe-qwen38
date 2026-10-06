@@ -7,7 +7,7 @@
 // reasoning_content. The engine keeps the conversation between requests: a request that continues it (the same
 // messages plus new ones) only feeds the new part.
 //   bl-server --model SHARD1.gguf [--host 127.0.0.1] [--port 8080] [--ctx 32768] [--name NAME] [--web DIR|none]
-//             [--expert-cache FILE]
+//             [--expert-cache FILE] [--gpus 0,1 [--layer-split K|auto]]
 // The chat page (web/index.html) is served at /. With --expert-cache, the expert cache (which experts sit in VRAM) is
 // saved after every reply and restored at the next start. Off by default: on new text it did not raise the hit rate
 // (88.4% restored vs 89.0% from the profile, 2026-10-05).
@@ -43,7 +43,7 @@ json error_json(const std::string & msg, const std::string & type = "invalid_req
 }  // namespace
 
 int main(int argc, char ** argv) {
-    std::string model, host = "127.0.0.1", name = "qwen3.8-flash-iq3_xxs", web, cache_file;
+    std::string model, host = "127.0.0.1", name = "qwen3.8-flash-iq3_xxs", web, cache_file, gpus, layer_split;
     int port = 8080, ctx = 32768;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -55,13 +55,18 @@ int main(int argc, char ** argv) {
         else if (a == "--name") name = next();
         else if (a == "--web") web = next();   // the chat page's directory (default: ../web next to the executable)
         else if (a == "--expert-cache") cache_file = next();
+        else if (a == "--gpus") gpus = next();                 // several GPUs: the layers split between them
+        else if (a == "--layer-split") layer_split = next();   // the first layer of each later GPU, or auto
         else { std::fprintf(stderr, "unknown argument %s\n", a.c_str()); return 2; }
     }
     if (model.empty()) { std::fprintf(stderr, "usage: %s --model SHARD1.gguf [--host H] [--port P] [--ctx N]\n", argv[0]); return 2; }
 
     std::fprintf(stderr, "loading %s ...\n", model.c_str());
     bl::Text text(model);
-    bl::Engine eng(model, ctx, cache_file);
+    bl::GpuSplit split;
+    try { split = bl::parse_gpu_split(gpus, layer_split); }
+    catch (const std::exception & e) { std::fprintf(stderr, "%s\n", e.what()); return 2; }
+    bl::Engine eng(model, ctx, cache_file, split);
     auto save_cache = [&] {   // after a reply (under `busy`): the next start begins with this cache
         if (cache_file.empty()) return;
         try { eng.save_cache(cache_file); } catch (const std::exception & e) { std::fprintf(stderr, "%s\n", e.what()); }

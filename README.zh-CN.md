@@ -118,6 +118,17 @@ build/bl-server --model models/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002
 `bl-chat --model SHARD1 [--ctx N] [--temp 0.7] [--top-p 0.8] [--top-k 20] [--spec 3] [--think off|low|medium|xhigh] [--system TEXT]`；
 对话中可以用 `/reset`、`/think low`、`/temp 0.3`、`/stats`、`/exit`。
 
+### 多块 GPU（实验性）
+
+`--gpus 0,1`（三个程序都支持）把层分给几张卡：第一张跑第 0 到 K-1 层，下一张从第 K 层开始，最后一张还负责输出头和
+MTP 层。每张卡只缓存自己那些层的专家，两张卡能放下大约两倍的专家；每个验证窗口只把残差交给下一张卡一次，经过锁页内存，
+不需要 NVLink 或卡间直连。`--layer-split K` 可以自己指定 K（默认 `auto`：选两张卡的缓存能装下最热门专家的那个 K）。
+不加 `--gpus` 时一切照旧。
+
+现状：用一张卡模拟两个阶段（`--gpus 0,0`）验证过——解码和单卡逐 token 一致，读提示词的结果在单卡自身的运行间波动之内——
+但**还没在两张真卡上跑过**。单卡解码时约 30% 的时间在等 CPU 算缺失的专家，第二张卡的缓存能消除其中的大部分：约 135–140
+tok/s 是估算，不是实测。欢迎有双卡的朋友反馈结果。
+
 ## 测速度和精度
 
 ```bash

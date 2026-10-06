@@ -1,6 +1,6 @@
 // Interactive chat in the terminal.
 //   bl-chat --model SHARD1.gguf [--ctx 32768] [--temp 0.7] [--top-p 0.8] [--top-k 20] [--seed N] [--spec 3]
-//           [--think off|low|medium|xhigh] [--system TEXT] [--max-new 4096]
+//           [--think off|low|medium|xhigh] [--system TEXT] [--max-new 4096] [--gpus 0,1 [--layer-split K|auto]]
 // Commands: /reset (new conversation), /think MODE, /temp X, /stats, /exit
 #include <chrono>
 #include <cstdio>
@@ -12,7 +12,7 @@
 #include "bl/chat.h"
 
 int main(int argc, char ** argv) {
-    std::string model, system, think;
+    std::string model, system, think, gpus, layer_split;
     int ctx = 32768;
     bl::ChatParams cp;
     cp.sampling.temperature = 0.7f;
@@ -31,6 +31,8 @@ int main(int argc, char ** argv) {
         else if (a == "--max-new") cp.max_new = std::stoi(next());
         else if (a == "--think") { think = next(); cp.think = think == "off" ? "" : think; }
         else if (a == "--system") system = next();
+        else if (a == "--gpus") gpus = next();
+        else if (a == "--layer-split") layer_split = next();
         else { std::fprintf(stderr, "unknown argument %s\n", a.c_str()); return 2; }
     }
     if (model.empty()) { std::fprintf(stderr, "usage: %s --model SHARD1.gguf [options]\n", argv[0]); return 2; }
@@ -38,7 +40,7 @@ int main(int argc, char ** argv) {
         std::fprintf(stderr, "loading %s ...\n", model.c_str());
         const auto t0 = std::chrono::steady_clock::now();
         bl::Text text(model);
-        bl::Engine eng(model, ctx);
+        bl::Engine eng(model, ctx, "", bl::parse_gpu_split(gpus, layer_split));
         bl::Chat chat(eng, text, ctx);
         std::fprintf(stderr, "ready in %.0f s. /reset starts over, /think off|low|medium|xhigh, /temp X, /stats, /exit\n",
                      std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());

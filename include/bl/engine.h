@@ -27,10 +27,19 @@ struct Sampling {
     uint64_t seed = 0;        // 0: keep the engine's random stream going
 };
 
+// several GPUs (a layer split): the layers in contiguous ranges, one per GPU, the residual handed on between them once
+// per window; each GPU caches the routed experts of its own layers. The last GPU also runs the head and the MTP layer.
+struct GpuSplit {
+    std::vector<int> gpus;          // CUDA device numbers in layer order; empty: device 0 alone
+    std::vector<int> first_layer;   // the first layer of each GPU after the first; empty: chosen at load (auto)
+};
+// the tools' --gpus "0,1" and --layer-split "24" | "auto" ("" = auto)
+GpuSplit parse_gpu_split(const std::string & gpus, const std::string & layer_split);
+
 class Engine {
 public:
     // cache_file: an expert cache saved by save_cache(); when it exists, the VRAM cache starts with those experts
-    Engine(const std::string & shard1, int max_ctx, const std::string & cache_file = "");
+    Engine(const std::string & shard1, int max_ctx, const std::string & cache_file = "", const GpuSplit & split = {});
     ~Engine();
     Engine(const Engine &) = delete;
     Engine & operator=(const Engine &) = delete;

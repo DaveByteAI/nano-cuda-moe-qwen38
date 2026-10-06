@@ -20,14 +20,15 @@ namespace {
 __device__ __forceinline__ float sigm(float x) { return 1.f / (1.f + expf(-x)); }
 __device__ __forceinline__ float silu(float x) { return x / (1.f + expf(-x)); }
 
-cublasHandle_t handle() {
-    static cublasHandle_t h = [] {
-        cublasHandle_t x;
-        if (cublasCreate(&x) != CUBLAS_STATUS_SUCCESS) throw std::runtime_error("cublasCreate failed");
-        cublasSetMathMode(x, CUBLAS_TF32_TENSOR_OP_MATH);
-        return x;
-    }();
-    return h;
+cublasHandle_t handle() {   // one per device: a handle belongs to the device current when it was created
+    static cublasHandle_t h[64] = {};
+    int dev = 0;
+    cudaGetDevice(&dev);
+    if (!h[dev]) {
+        if (cublasCreate(&h[dev]) != CUBLAS_STATUS_SUCCESS) throw std::runtime_error("cublasCreate failed");
+        cublasSetMathMode(h[dev], CUBLAS_TF32_TENSOR_OP_MATH);
+    }
+    return h[dev];
 }
 
 __global__ void silu_scale_k(const float * x, float * y, size_t n, float scale) {
