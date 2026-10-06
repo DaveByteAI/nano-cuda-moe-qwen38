@@ -129,7 +129,7 @@ bool supported(uint32_t t) {
 
 bool expert_supported(uint32_t t) {
     switch (t) {
-        case IQ2_XXS: case IQ2_XS: case IQ2_S: case IQ3_XXS: case IQ3_S: case IQ4_NL: case Q2_0: return true;
+        case IQ2_XXS: case IQ2_XS: case IQ2_S: case IQ3_XXS: case IQ3_S: case IQ4_NL: case IQ4_XS: case Q2_0: return true;
         default: return false;
     }
 }

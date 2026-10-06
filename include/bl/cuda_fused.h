@@ -49,6 +49,7 @@ void hc_combine_t(float * R, const float * h, const float * inj, int D, int hc, 
 // out[t] = row tokens[t] of the embedding table; tokens in device memory
 void embed_tokens(uint32_t type, const void * W, size_t row_bytes, int D, const int * tokens, int T, float * out,
                   cudaStream_t s);
+bool embed_supported(uint32_t type);   // a token-embedding format embed_tokens handles
 // ids[t] = argmax of logits[t] (n values each), lowest id on ties; probs[t] = its softmax probability (if probs)
 void argmax_rows(const float * logits, int n, int T, int * ids, cudaStream_t s, float * probs = nullptr);
 // MTP input fusion: R[r][c] = h[r][c] + e[r]   (h [T][hc][D], e [T][D])

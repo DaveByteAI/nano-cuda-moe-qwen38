@@ -104,10 +104,10 @@ file, the 28.8 GB n-gram table, is the same in all four, so the script links one
 | **IQ3_XXS** | 47.0 GB | 43.0 GB | 55 GB | tested (all numbers here) |
 | IQ2_XS | 39.2 GB | ≈ 35 GB | ≈ 47 GB | untested |
 | Q2_0 | 37.6 GB | ≈ 33.5 GB | ≈ 46 GB | untested |
-| IQ3_S | 54.8 GB | 50.3 GB | 62 GB | **not supported yet**: one layer's experts are IQ4_XS |
+| IQ3_S | 54.8 GB | 50.3 GB | 62 GB | runs: ~82 tok/s (IQ3_XXS: ~100 on the same texts); accuracy against llama.cpp not measured |
 
 A name is only a label: each file mixes formats per layer (the IQ3_XXS one has IQ2_XXS, IQ2_XS, IQ2_S, IQ3_XXS and
-IQ3_S experts, with IQ4_NL or Q2_0 for `down`). The engine checks every expert tensor at start and stops with the
+IQ3_S experts, with IQ4_NL or Q2_0 for `down`; the IQ3_S one also IQ4_XS, and IQ4_XS token embeddings). The engine checks every expert tensor at start and stops with the
 tensor's name if a format is not handled. A bigger file leaves a smaller share of its experts in VRAM, so it decodes
 slower; a smaller one decodes faster at some cost in accuracy.
 

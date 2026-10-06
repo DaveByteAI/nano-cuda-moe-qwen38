@@ -858,10 +858,19 @@ void hc_combine_t(float * R, const float * h, const float * inj, int D, int hc, 
     hc_combine_t_k<<<(T * hc * D + 255) / 256, 256, 0, s>>>(R, h, inj, D, hc, T);
 }
 
+bool embed_supported(uint32_t t) {
+    switch (t) {
+        case IQ3_S: case IQ4_NL: case IQ4_XS: case Q4_K: case Q5_K: case Q6_K: case Q8_0: case BF16: return true;
+        default: return false;
+    }
+}
+
 void embed_tokens(uint32_t t, const void * W, size_t rb, int D, const int * tokens, int T, float * out, cudaStream_t s) {
     const auto * w = static_cast<const uint8_t *>(W);
     switch (t) {
         case IQ3_S: embed_tokens_k<IQ3_S><<<T, 256, 0, s>>>(w, rb, D, tokens, out); break;
+        case IQ4_NL: embed_tokens_k<IQ4_NL><<<T, 256, 0, s>>>(w, rb, D, tokens, out); break;
+        case IQ4_XS: embed_tokens_k<IQ4_XS><<<T, 256, 0, s>>>(w, rb, D, tokens, out); break;
         case Q4_K:  embed_tokens_k<Q4_K><<<T, 256, 0, s>>>(w, rb, D, tokens, out); break;
         case Q5_K:  embed_tokens_k<Q5_K><<<T, 256, 0, s>>>(w, rb, D, tokens, out); break;
         case Q6_K:  embed_tokens_k<Q6_K><<<T, 256, 0, s>>>(w, rb, D, tokens, out); break;

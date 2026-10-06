@@ -72,6 +72,7 @@ int main(int argc, char ** argv) {
     int gen = 0, ctx = 4096, repeat = 1, warm = 0, window = 1, save_last = 0;
     std::string specs, pf_logits, cache_file, save_cache;
     float min_p = 0.5f;
+    bool prepass = true;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : ""; };
@@ -91,6 +92,7 @@ int main(int argc, char ** argv) {
         else if (a == "--min-p") min_p = std::stof(next());     // chain another draft while the last one's p >= this
         else if (a == "--cache-file") cache_file = next();      // start with this saved expert cache
         else if (a == "--save-cache") save_cache = next();      // save the expert cache at the end
+        else if (a == "--no-prepass") prepass = false;          // with several files: skip feeding the extra ones first
         else { std::fprintf(stderr, "unknown argument %s\n", a.c_str()); return 2; }
     }
     if (model.empty() || tokens_file.empty()) {
@@ -208,7 +210,7 @@ int main(int argc, char ** argv) {
             }
             return 0;
         }
-        for (size_t fi = 1; fi < files.size(); ++fi) {   // the extra files first, the first one last (it is reported)
+        for (size_t fi = 1; prepass && fi < files.size(); ++fi) {   // the extra files first, the first one last (it is reported)
             toks = files[fi];
             T = static_cast<int>(toks.size());
             eng.reset();
