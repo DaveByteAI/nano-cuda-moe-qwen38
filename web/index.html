@@ -221,6 +221,12 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
   font: 13.5px/1.6 var(--sans); padding: 10px 12px; outline: none; }
 .f textarea:focus { border-color: var(--ink-2); }
 .f p { margin: 6px 0 0; font-size: 12px; color: var(--muted); line-height: 1.55; }
+.f .pick { display: flex; gap: 8px; }
+.f select { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--rule); border-radius: 10px; color: var(--ink); font: 13px var(--sans);
+  padding: 8px 10px; outline: none; }
+.f select:focus { border-color: var(--ink-2); }
+.f .pick button { background: var(--ink); color: var(--bg); border: 0; border-radius: 10px; font: 13px var(--sans); padding: 0 14px; cursor: pointer; }
+.f .pick button:disabled { opacity: .35; cursor: default; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--rule-2); border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -233,7 +239,7 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
 </head>
 <body>
 <aside id="rail">
-  <div class="mark"><div class="seal">无界</div><div><div class="name">Boundless<i>v1</i></div><small>Qwen 3.8 · RTX 3090</small></div></div>
+  <div class="mark"><div class="seal">无界</div><div><div class="name">Boundless<i>v1</i></div><small id="brand_model">Qwen 3.8 · RTX 3090</small></div></div>
   <button id="new"><span>新的对话</span><kbd>⌘ K</kbd></button>
   <div class="label">目录</div>
   <div id="convs"></div>
@@ -263,7 +269,8 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
 <div id="veil"></div>
 <aside id="panel">
   <h2>调校</h2>
-  <div class="sub">Sampling · Drafting · Persona</div>
+  <div class="sub">Model · Sampling · Drafting · Persona</div>
+  <div class="f"><div class="top"><span>模型 Model</span><b id="v_model">—</b></div><div class="pick"><select id="model"></select><button id="switch">切换</button></div><p id="model_note"></p></div>
   <div class="f"><div class="top"><span>温度 Temperature</span><b id="v_temp"></b></div><input type="range" id="temp" min="0" max="1.5" step="0.05"><p>0 为贪心解码：最快，结果可复现。</p></div>
   <div class="f"><div class="top"><span>Top-p</span><b id="v_topp"></b></div><input type="range" id="topp" min="0.05" max="1" step="0.05"></div>
   <div class="f"><div class="top"><span>Top-k</span><b id="v_topk"></b></div><input type="range" id="topk" min="1" max="256" step="1"></div>
@@ -486,7 +493,8 @@ async function ask(c, bot, el) {
     else if (e.server) {   // the service is up and said no
       bot.errorNew = /longer than the context|context full/i.test(e.message);
       bot.error = bot.errorNew ? '这个对话已经超过模型的上下文长度，没法再接着聊了。新开一个对话就可以继续。'
-                               : '服务报告了一个错误：' + e.message;
+                : /switching the model/i.test(e.message) ? '正在切换模型，稍等一会儿再发。'
+                : '服务报告了一个错误：' + e.message;
     } else bot.error = '连不上服务：' + e.message + '。服务还在运行吗？';
   }
   const t1 = performance.now(), tokens = usage?.completion_tokens ?? chunks;
@@ -547,7 +555,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') panel(false);
 });
 $('#toggle').onclick = () => $('#rail').classList.toggle('hidden');
-const panel = on => { $('#panel').classList.toggle('on', on); $('#veil').classList.toggle('on', on); };
+const panel = on => { $('#panel').classList.toggle('on', on); $('#veil').classList.toggle('on', on); if (on) loadModels(); };
 $('#open').onclick = () => panel(true);
 $('#veil').onclick = () => panel(false);
 function slider(id, fmt) {
@@ -562,10 +570,49 @@ $('#system').oninput = e => { cfg.system = e.target.value; store.set('cfg', cfg)
 const modes = () => document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.v === cfg.think));
 document.querySelectorAll('#modes button').forEach(b => b.onclick = () => { cfg.think = b.dataset.v; store.set('cfg', cfg); modes(); });
 modes();
+// the model: the quantizations next to the server's --model, switched by the server in the background
+const MODEL_NOTE = { IQ3_XXS: '已测试，约 100 tok/s', IQ3_S: '约 82 tok/s，精度略高', IQ2_XS: '未测试：更快，精度更低', Q2_0: '未测试：更快，精度更低' };
+const NOTE_IDLE = '换模型要重新加载，约 30–60 秒，期间不能对话；当前对话可以接着聊。';
+let models = { current: '', state: 'ready', models: [] };
+async function loadModels() {
+  try {
+    const j = await (await fetch('/bl/models', { cache: 'no-store' })).json();
+    models = j;
+    const sel = $('#model'), keep = sel.value;
+    sel.replaceChildren(...j.models.map(m => {
+      const o = document.createElement('option');
+      o.value = m.id;
+      o.textContent = m.id + ' · ' + m.gb + ' GB' + (MODEL_NOTE[m.id] ? ' · ' + MODEL_NOTE[m.id] : '');
+      return o;
+    }));
+    sel.value = j.state === 'loading' ? j.target : sel.dataset.touched && j.models.some(m => m.id === keep) ? keep : j.current;
+    const loading = j.state === 'loading';
+    $('#v_model').textContent = loading ? '切换中…' : j.current || '—';
+    $('#brand_model').textContent = 'Qwen 3.8 · ' + (j.current || 'RTX 3090');
+    $('#switch').disabled = loading;
+    $('#model_note').textContent = loading ? '正在切换到 ' + j.target + '，约 30–60 秒……'
+                                 : j.error ? '上次切换没有成功：' + j.error : NOTE_IDLE;
+    return j;
+  } catch { return null; }
+}
+$('#model').onchange = e => { e.target.dataset.touched = '1'; };
+$('#switch').onclick = async () => {
+  const id = $('#model').value;
+  if (!id || id === models.current) return;
+  if (!confirm('切换到 ' + id + '？\n模型要重新加载，约 30–60 秒，期间不能对话。')) return;
+  try {
+    const r = await fetch('/bl/models', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+    if (!r.ok) { let m = '服务返回 ' + r.status; try { m = (await r.json()).error.message || m; } catch {} alert('没能开始切换：' + m); }
+  } catch (e) { alert('连不上服务：' + e.message); }
+  delete $('#model').dataset.touched;
+  const poll = async () => { const j = await loadModels(); if (!j || j.state === 'loading') setTimeout(poll, 1000); else ping(); };
+  poll();
+};
 async function ping() {
   try {
-    const j = await (await fetch('/v1/models', { cache: 'no-store' })).json();
-    $('#pulse').className = 'pulse ok'; $('#state').textContent = '在线';
+    await (await fetch('/v1/models', { cache: 'no-store' })).json();
+    const j = await loadModels();
+    $('#pulse').className = 'pulse ok'; $('#state').textContent = j && j.state === 'loading' ? '切换模型中' : '在线';
   } catch { $('#pulse').className = 'pulse bad'; $('#state').textContent = '离线'; }
 }
 ping(); setInterval(ping, 15000);

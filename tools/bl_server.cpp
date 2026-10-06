@@ -8,16 +8,28 @@
 // messages plus new ones) only feeds the new part.
 //   bl-server --model SHARD1.gguf [--host 127.0.0.1] [--port 8080] [--ctx 32768] [--name NAME] [--web DIR|none]
 //             [--expert-cache FILE]
+// Switching models while running: GET /bl/models lists the quantizations next to --model (files "...-00001-of-N.gguf"
+// with all their shards) and the state; POST /bl/models {"id": "IQ3_S"} answers at once and swaps the model in the
+// background once the current reply is done (chat requests meanwhile get 503); if the new one fails to load, the old
+// one comes back. The chat page has it in its settings panel.
 // The chat page (web/index.html) is served at /. With --expert-cache, the expert cache (which experts sit in VRAM) is
 // saved after every reply and restored at the next start. Off by default: on new text it did not raise the hit rate
 // (88.4% restored vs 89.0% from the profile, 2026-10-05).
+#include <dirent.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
+#include <cmath>
 #include <chrono>
 #include <cstdio>
+#include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "bl/chat.h"
 #include "httplib.h"
@@ -36,6 +48,45 @@ std::string content_text(const json & c) {   // a message's content: a string, o
     return s;
 }
 
+// a model file's id: the quantization in "...GSQ-RCO-<id>-00001-of-N.gguf", else the name before "-00001-of-"
+std::string model_id(const std::string & path) {
+    const std::string f = path.substr(path.rfind('/') + 1);
+    const size_t end = f.find("-00001-of-"), at = f.rfind("GSQ-RCO-", end);
+    if (end == std::string::npos) return f;
+    return at == std::string::npos ? f.substr(0, end) : f.substr(at + 8, end - at - 8);
+}
+
+struct ModelFile { std::string id, path; double gb; };
+// the models in shard 1's directory whose shards are all there (sizes through symlinks)
+std::vector<ModelFile> list_models(const std::string & shard1) {
+    const size_t sl = shard1.rfind('/');
+    const std::string dir = sl == std::string::npos ? "." : shard1.substr(0, sl);
+    std::vector<ModelFile> r;
+    DIR * d = opendir(dir.c_str());
+    if (!d) return r;
+    while (const dirent * e = readdir(d)) {
+        const std::string f = e->d_name;
+        const size_t at = f.find("-00001-of-");
+        if (at == std::string::npos || f.size() < 5 || f.compare(f.size() - 5, 5, ".gguf") != 0) continue;
+        const int n = std::atoi(f.c_str() + at + 10);
+        bool all = n >= 1;
+        double gb = 0;
+        for (int k = 1; all && k <= n; ++k) {
+            char part[16];
+            std::snprintf(part, sizeof part, "-%05d-of-", k);
+            std::string g = f;
+            g.replace(at, 10, part);
+            struct stat st {};
+            all = ::stat((dir + "/" + g).c_str(), &st) == 0;
+            gb += st.st_size / 1e9;
+        }
+        if (all) r.push_back({model_id(f), dir + "/" + f, gb});
+    }
+    closedir(d);
+    std::sort(r.begin(), r.end(), [](const ModelFile & a, const ModelFile & b) { return a.id < b.id; });
+    return r;
+}
+
 json error_json(const std::string & msg, const std::string & type = "invalid_request_error") {
     return json{{"error", {{"message", msg}, {"type", type}}}};
 }
@@ -43,7 +94,7 @@ json error_json(const std::string & msg, const std::string & type = "invalid_req
 }  // namespace
 
 int main(int argc, char ** argv) {
-    std::string model, host = "127.0.0.1", name = "qwen3.8-flash-iq3_xxs", web, cache_file;
+    std::string model, host = "127.0.0.1", name, web, cache_file;   // name: from the model's id unless given
     int port = 8080, ctx = 32768;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -59,15 +110,36 @@ int main(int argc, char ** argv) {
     }
     if (model.empty()) { std::fprintf(stderr, "usage: %s --model SHARD1.gguf [--host H] [--port P] [--ctx N]\n", argv[0]); return 2; }
 
-    std::fprintf(stderr, "loading %s ...\n", model.c_str());
-    bl::Text text(model);
-    bl::Engine eng(model, ctx, cache_file);
-    auto save_cache = [&] {   // after a reply (under `busy`): the next start begins with this cache
-        if (cache_file.empty()) return;
-        try { eng.save_cache(cache_file); } catch (const std::exception & e) { std::fprintf(stderr, "%s\n", e.what()); }
+    // the loaded model; replaced (under `busy`) by a switch
+    struct Loaded { std::unique_ptr<bl::Text> text; std::unique_ptr<bl::Engine> eng; std::unique_ptr<bl::Chat> chat; std::string path; };
+    Loaded cur;
+    const bool fixed_name = !name.empty();
+    std::mutex state_mu;   // guards the switch state below and the model's name (read without waiting for `busy`)
+    std::string current, target, state = "ready", switch_error;
+    std::atomic<bool> switching{false};
+    auto model_name = [&] { std::lock_guard<std::mutex> lk(state_mu); return name; };
+    auto load = [&](const std::string & path) {   // the old one goes first: two do not fit
+        cur.chat.reset();
+        cur.eng.reset();
+        cur.text.reset();
+        std::fprintf(stderr, "loading %s ...\n", path.c_str());
+        cur.text = std::make_unique<bl::Text>(path);
+        cur.eng = std::make_unique<bl::Engine>(path, ctx, cache_file);
+        cur.chat = std::make_unique<bl::Chat>(*cur.eng, *cur.text, ctx);
+        cur.path = path;
+        std::lock_guard<std::mutex> lk(state_mu);
+        current = model_id(path);
+        if (!fixed_name) {
+            name = "qwen3.8-flash-" + current;
+            std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return std::tolower(ch); });
+        }
     };
-    bl::Chat chat(eng, text, ctx);
-    std::mutex busy;   // one generation at a time
+    load(model);
+    auto save_cache = [&] {   // after a reply (under `busy`): the next start begins with this cache
+        if (cache_file.empty() || !cur.eng) return;
+        try { cur.eng->save_cache(cache_file); } catch (const std::exception & e) { std::fprintf(stderr, "%s\n", e.what()); }
+    };
+    std::mutex busy;   // one generation (or a model switch) at a time
     std::atomic<long> seq{0};
 
     httplib::Server srv;
@@ -83,10 +155,62 @@ int main(int argc, char ** argv) {
     if (web != "none" && srv.set_mount_point("/", web)) std::fprintf(stderr, "chat page: %s\n", web.c_str());
     srv.Get("/health", [](const httplib::Request &, httplib::Response & res) { res.set_content("{\"status\":\"ok\"}", "application/json"); });
     srv.Get("/v1/models", [&](const httplib::Request &, httplib::Response & res) {
-        res.set_content(json{{"object", "list"}, {"data", json::array({{{"id", name}, {"object", "model"}, {"owned_by", "boundless"}}})}}.dump(),
+        res.set_content(json{{"object", "list"}, {"data", json::array({{{"id", model_name()}, {"object", "model"}, {"owned_by", "boundless"}}})}}.dump(),
                         "application/json");
     });
+    srv.Get("/bl/models", [&](const httplib::Request &, httplib::Response & res) {
+        json list = json::array();
+        for (const auto & m : list_models(model)) list.push_back({{"id", m.id}, {"gb", std::round(m.gb * 10) / 10}});
+        std::lock_guard<std::mutex> lk(state_mu);
+        res.set_content(json{{"current", current}, {"state", state}, {"target", target}, {"error", switch_error}, {"models", list}}.dump(),
+                        "application/json");
+    });
+    srv.Post("/bl/models", [&](const httplib::Request & req, httplib::Response & res) {
+        std::string id;
+        try { id = json::parse(req.body).at("id").get<std::string>(); }
+        catch (...) { res.status = 400; res.set_content(error_json("expected {\"id\": \"<quantization>\"}").dump(), "application/json"); return; }
+        std::string path;
+        for (const auto & m : list_models(model)) if (m.id == id) path = m.path;
+        if (path.empty()) { res.status = 404; res.set_content(error_json("no model " + id).dump(), "application/json"); return; }
+        {
+            std::lock_guard<std::mutex> lk(state_mu);
+            if (switching) { res.status = 409; res.set_content(error_json("already switching to " + target).dump(), "application/json"); return; }
+            if (id == current && state == "ready") { res.set_content(json{{"state", "ready"}, {"current", current}}.dump(), "application/json"); return; }
+            switching = true;
+            state = "loading";
+            target = id;
+            switch_error.clear();
+        }
+        std::thread([&, path, id] {
+            std::lock_guard<std::mutex> lk(busy);   // after the current reply
+            const auto t0 = std::chrono::steady_clock::now();
+            const std::string prev = cur.path;
+            std::string err;
+            std::fprintf(stderr, "switching to %s\n", id.c_str());
+            try { load(path); } catch (const std::exception & e) { err = e.what(); }
+            if (!err.empty()) {   // the old one back
+                std::fprintf(stderr, "switch to %s failed: %s; reloading %s\n", id.c_str(), err.c_str(), prev.c_str());
+                try { load(prev); } catch (const std::exception & e) { err += std::string("; reloading the previous model failed too: ") + e.what(); }
+            } else {
+                std::fprintf(stderr, "switched to %s in %.1f s\n", id.c_str(),
+                             std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+            }
+            std::lock_guard<std::mutex> sl(state_mu);
+            state = cur.chat ? "ready" : "failed";
+            switch_error = err;
+            switching = false;
+        }).detach();
+        res.status = 202;
+        res.set_content(json{{"state", "loading"}, {"target", id}}.dump(), "application/json");
+    });
     srv.Post("/v1/chat/completions", [&](const httplib::Request & req, httplib::Response & res) {
+        if (switching) {
+            res.status = 503;
+            std::lock_guard<std::mutex> lk(state_mu);
+            res.set_content(error_json("switching the model to " + target + ", try again in a minute", "server_busy").dump(), "application/json");
+            return;
+        }
+        const std::string name = model_name();
         json body;
         try { body = json::parse(req.body); } catch (...) { res.status = 400; res.set_content(error_json("invalid JSON").dump(), "application/json"); return; }
         std::vector<bl::Text::Message> msgs;
@@ -120,7 +244,8 @@ int main(int argc, char ** argv) {
         if (!stream) {
             std::lock_guard<std::mutex> lk(busy);
             try {
-                const bl::ChatResult r = chat.reply(msgs, cp);
+                if (!cur.chat) throw std::runtime_error("no model loaded (the last switch failed)");
+                const bl::ChatResult r = cur.chat->reply(msgs, cp);
                 json msg{{"role", "assistant"}, {"content", r.content}};
                 if (!r.reasoning.empty()) msg["reasoning_content"] = r.reasoning;
                 res.set_content(json{{"id", id}, {"object", "chat.completion"}, {"created", created}, {"model", name},
@@ -135,7 +260,7 @@ int main(int argc, char ** argv) {
             }
             return;
         }
-        res.set_chunked_content_provider("text/event-stream", [&, msgs, cp, id, created](size_t, httplib::DataSink & sink) {
+        res.set_chunked_content_provider("text/event-stream", [&, msgs, cp, id, created, name](size_t, httplib::DataSink & sink) {
             std::lock_guard<std::mutex> lk(busy);
             auto send = [&](const json & j) {
                 const std::string s = "data: " + j.dump() + "\n\n";
@@ -147,7 +272,8 @@ int main(int argc, char ** argv) {
             };
             send(chunk({{"role", "assistant"}, {"content", ""}}, nullptr));
             try {
-                const bl::ChatResult r = chat.reply(msgs, cp, [&](const std::string & s, bool reasoning) {
+                if (!cur.chat) throw std::runtime_error("no model loaded (the last switch failed)");
+                const bl::ChatResult r = cur.chat->reply(msgs, cp, [&](const std::string & s, bool reasoning) {
                     return send(chunk(json{{reasoning ? "reasoning_content" : "content", s}}, nullptr));   // false: the client left
                 });
                 json last = chunk(json::object(), r.stopped_eog ? "stop" : "length");
