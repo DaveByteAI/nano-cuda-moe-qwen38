@@ -123,6 +123,10 @@ fishing" works.
 `bl-chat --model SHARD1 [--ctx N] [--temp 0.7] [--top-p 0.8] [--top-k 20] [--spec 3] [--think off|low|medium|xhigh] [--system TEXT]`;
 in the chat: `/reset`, `/think low`, `/temp 0.3`, `/stats`, `/exit`.
 
+**Several GPUs (experimental)**: on the [`multi-gpu`](https://github.com/DaveByteAI/nano-cuda-moe-qwen38/tree/multi-gpu)
+branch, `--gpus 0,1` splits the layers between the cards. So far checked only as two stages on one GPU, not yet on two
+real GPUs; reports are welcome.
+
 ## Checking accuracy and speed
 
 ```bash

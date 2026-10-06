@@ -118,6 +118,9 @@ build/bl-server --model models/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002
 `bl-chat --model SHARD1 [--ctx N] [--temp 0.7] [--top-p 0.8] [--top-k 20] [--spec 3] [--think off|low|medium|xhigh] [--system TEXT]`；
 对话中可以用 `/reset`、`/think low`、`/temp 0.3`、`/stats`、`/exit`。
 
+**多块 GPU（实验性）**：在 [`multi-gpu`](https://github.com/DaveByteAI/nano-cuda-moe-qwen38/tree/multi-gpu) 分支，
+加 `--gpus 0,1` 把层分给几张卡。目前只在单卡上模拟验证过，还没在两张真卡上测过，欢迎反馈。
+
 ## 测速度和精度
 
 ```bash
