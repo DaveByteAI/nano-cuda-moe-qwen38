@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>无界 · Boundless</title>
+<link rel="stylesheet" id="hl-paper" href="vendor/github.min.css">
+<link rel="stylesheet" id="hl-ink" href="vendor/github-dark.min.css" disabled>
+<script src="vendor/marked.min.js"></script>
+<script src="vendor/purify.min.js"></script>
+<script src="vendor/highlight.min.js"></script>
+<style>
+
+:root {
+  /* CJK: a real Song face where there is one (macOS, Linux with Noto/Source Han); else the system sans, not SimSun */
+  --serif: Georgia, "Times New Roman", "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", "Noto Serif SC", "PingFang SC",
+           "Microsoft YaHei", serif;
+  --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ease: cubic-bezier(.2, .7, .1, 1);
+}
+[data-theme="paper"] {
+  --bg: #f3efe6; --bg-deep: #ebe5d8; --card: #faf7f0; --ink: #1c1a16; --ink-2: #3d3a33; --muted: #8b8577; --faint: #b3ad9f;
+  --rule: #ddd5c4; --rule-2: #cfc6b2; --seal: #c8372d; --seal-soft: rgba(200, 55, 45, .08); --code: #ece6d9;
+  --shadow: 0 1px 0 rgba(255,255,255,.7) inset, 0 18px 50px -24px rgba(60, 45, 20, .35);
+  --grain-op: .35;
+}
+[data-theme="ink"] {
+  --bg: #141310; --bg-deep: #0e0d0b; --card: #1b1a16; --ink: #ebe5d6; --ink-2: #cfc8b7; --muted: #8a8475; --faint: #5c574c;
+  --rule: #2b2923; --rule-2: #3a372f; --seal: #e05a47; --seal-soft: rgba(224, 90, 71, .10); --code: #1f1d18;
+  --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 20px 60px -20px rgba(0, 0, 0, .7);
+  --grain-op: .22;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15.5px/1.75 var(--sans); display: flex; overflow: hidden;
+  -webkit-font-smoothing: antialiased; transition: background .4s var(--ease), color .4s var(--ease); }
+body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 100; opacity: var(--grain-op); mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.4 0 0 0 0 0.3 0 0 0 .18 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+[data-theme="ink"] body::after { mix-blend-mode: screen; }
+button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; padding: 0; }
+::selection { background: var(--seal); color: #fff; }
+
+/* ───────── the seal ───────── */
+.seal { width: 34px; height: 34px; flex: none; background: var(--seal); color: #fbf3ea; border-radius: 4px; display: grid;
+  grid-template-columns: 1fr; place-items: center; font: 600 13px/1 var(--serif); letter-spacing: 1px; writing-mode: vertical-rl;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.18); transform: rotate(-3deg); position: relative; }
+.seal::before { content: ""; position: absolute; inset: 3px; border: 1px solid rgba(255,255,255,.45); border-radius: 2px; }
+
+/* ───────── rail ───────── */
+#rail { width: 252px; flex: none; display: flex; flex-direction: column; padding: 26px 0 18px; border-right: 1px solid var(--rule);
+  background: linear-gradient(var(--bg), var(--bg-deep)); transition: margin .35s var(--ease); }
+#rail.hidden { margin-left: -252px; }
+.mark { display: flex; align-items: center; gap: 12px; padding: 0 22px 26px; }
+.mark .name { font: 400 26px/1 var(--serif); letter-spacing: .5px; }
+.mark .name i { font-style: italic; color: var(--muted); font-size: 15px; margin-left: 4px; }
+.mark small { display: block; font: 10.5px/1.4 var(--mono); color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; margin-top: 4px; }
+#new { margin: 0 22px 22px; display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule); font-size: 14px; color: var(--ink-2); transition: color .2s; }
+#new:hover { color: var(--seal); }
+#new kbd { font: 10.5px var(--mono); color: var(--faint); }
+.label { padding: 0 22px 8px; font: 10.5px var(--mono); letter-spacing: 1.8px; color: var(--faint); text-transform: uppercase; }
+#convs { flex: 1; overflow-y: auto; padding: 0 12px; }
+.conv { display: grid; grid-template-columns: 26px 1fr auto; align-items: baseline; gap: 4px; padding: 7px 10px; border-radius: 6px;
+  color: var(--muted); font-size: 13.5px; cursor: pointer; transition: color .2s, background .2s; }
+.conv .no { font: 11px var(--mono); color: var(--faint); }
+.conv .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv .x { opacity: 0; font-size: 12px; color: var(--faint); padding: 0 2px; transition: opacity .2s; }
+.conv:hover { color: var(--ink); }
+.conv:hover .x { opacity: 1; }
+.conv .x:hover { color: var(--seal); }
+.conv.on { color: var(--ink); background: var(--seal-soft); }
+.conv.on .no { color: var(--seal); }
+.foot { padding: 14px 22px 0; display: flex; align-items: center; justify-content: space-between; font: 11px var(--mono); color: var(--muted);
+  letter-spacing: .5px; border-top: 1px solid var(--rule); margin: 0 0; }
+.live { display: flex; align-items: center; gap: 8px; }
+.pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); position: relative; }
+.pulse.ok { background: #5b8c5a; }
+.pulse.ok::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1px solid #5b8c5a; animation: ring 2.4s var(--ease) infinite; }
+.pulse.bad { background: var(--seal); }
+@keyframes ring { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+#theme { font: 11px var(--mono); color: var(--muted); letter-spacing: .5px; padding: 3px 8px; border: 1px solid var(--rule); border-radius: 20px; transition: .2s; }
+#theme:hover { color: var(--ink); border-color: var(--rule-2); }
+
+/* ───────── main ───────── */
+#main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+#head { height: 64px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 28px; }
+.ghost { width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); border-radius: 6px; transition: .2s; }
+.ghost:hover { color: var(--ink); background: var(--seal-soft); }
+#title { flex: 1; font: 20px/1.2 var(--serif); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
+#speed { font: 12px var(--mono); color: var(--muted); display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+#speed b { font: 400 22px var(--serif); color: var(--ink); }
+#scroll { flex: 1; overflow-y: auto; }
+#flow { max-width: 740px; margin: 0 auto; padding: 18px 32px 60px; }
+
+/* an exchange: the question as a heading, the answer as prose */
+.q { margin: 46px 0 14px; display: grid; grid-template-columns: 34px 1fr; gap: 0 12px; animation: up .5s var(--ease) both; }
+.q .n { font: 11px/2.6 var(--mono); color: var(--seal); letter-spacing: 1px; }
+.q .text { font: 400 23px/1.45 var(--serif); color: var(--ink); white-space: pre-wrap; word-break: break-word; }
+.a { margin-left: 46px; animation: up .5s .06s var(--ease) both; }
+@keyframes up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.prose { color: var(--ink-2); }
+.prose > :first-child { margin-top: 0; }
+.prose p { margin: .55em 0 .75em; }
+.prose h1, .prose h2, .prose h3, .prose h4 { font-family: var(--serif); font-weight: 400; color: var(--ink); line-height: 1.3; margin: 1.3em 0 .4em; }
+.prose h1 { font-size: 1.7em; } .prose h2 { font-size: 1.45em; } .prose h3 { font-size: 1.22em; } .prose h4 { font-size: 1.08em; }
+.prose strong { color: var(--ink); font-weight: 600; }
+.prose a { color: var(--seal); text-decoration: none; border-bottom: 1px solid currentColor; }
+.prose ul, .prose ol { padding-left: 1.3em; margin: .5em 0 .8em; }
+.prose li { margin: .2em 0; }
+.prose li::marker { color: var(--seal); }
+.prose hr { border: 0; height: 1px; background: var(--rule); margin: 1.6em 0; }
+.prose blockquote { margin: 1em 0; padding: .1em 0 .1em 1.1em; border-left: 2px solid var(--seal); font-family: var(--serif); font-size: 1.12em; color: var(--ink); }
+.prose table { border-collapse: collapse; margin: 1em 0; font-size: 14px; display: block; overflow-x: auto; font-variant-numeric: tabular-nums; }
+.prose th { text-align: left; font: 10.5px var(--mono); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); font-weight: 400;
+  border-bottom: 1px solid var(--ink); padding: 8px 14px 6px 0; }
+.prose td { border-bottom: 1px solid var(--rule); padding: 8px 14px 8px 0; }
+.prose :not(pre) > code { font: .86em var(--mono); background: var(--code); padding: .12em .4em; border-radius: 4px; color: var(--ink); }
+.prose pre { margin: 1.1em 0; background: var(--code); border-radius: 10px; overflow: hidden; border: 1px solid var(--rule); }
+.prose pre .bar { display: flex; justify-content: space-between; align-items: center; padding: 7px 14px; border-bottom: 1px solid var(--rule);
+  font: 10.5px var(--mono); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
+.prose pre .bar button { font: 10.5px var(--mono); letter-spacing: 1px; color: var(--muted); text-transform: uppercase; transition: color .2s; }
+.prose pre .bar button:hover { color: var(--seal); }
+.prose pre code { display: block; padding: 14px 16px; overflow-x: auto; font: 13px/1.6 var(--mono); background: none !important; }
+/* an SVG code block, drawn: on white (drawings assume it), the code folded under the bar */
+.prose .svgfig { display: block; width: 100%; box-sizing: border-box; margin: 1.1em 0 .4em; padding: 16px; background: #fff;
+                 border: 1px solid var(--rule); border-radius: 10px; }
+.prose .svgfig svg { display: block; width: 100%; max-width: 720px; height: auto; max-height: 70vh; margin: 0 auto; }
+.prose pre.folded code { display: none; }
+.caret::after { content: ""; display: inline-block; width: .5em; height: 1.05em; margin-left: 2px; vertical-align: -.15em; background: var(--seal);
+  animation: caret 1.05s steps(2, jump-none) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+.waiting { display: flex; gap: 5px; padding: 10px 0; }
+.waiting i { width: 6px; height: 6px; border-radius: 50%; background: var(--seal); animation: breathe 1.2s var(--ease) infinite; }
+.waiting i:nth-child(2) { animation-delay: .15s; } .waiting i:nth-child(3) { animation-delay: .3s; }
+@keyframes breathe { 0%, 100% { opacity: .2; transform: scale(.8); } 50% { opacity: 1; transform: none; } }
+
+/* thinking: a marginal note */
+.note { margin: 0 0 14px; }
+.note summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; font: 11px var(--mono);
+  letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); user-select: none; transition: color .2s; }
+.note summary::-webkit-details-marker { display: none; }
+.note summary:hover { color: var(--ink); }
+.note summary .tri { transition: transform .3s var(--ease); display: inline-block; font-size: 9px; }
+.note[open] summary .tri { transform: rotate(90deg); }
+.note summary .spin { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--rule-2); border-top-color: var(--seal); animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.note .body { margin-top: 10px; padding: 2px 0 2px 16px; border-left: 1px solid var(--seal); font: italic 14.5px/1.75 var(--serif);
+  color: var(--muted); white-space: pre-wrap; max-height: 380px; overflow-y: auto; }
+.err { color: var(--seal); font-size: 14px; }
+.err .errnew { margin-left: 10px; padding: 2px 10px; font: 12px var(--sans); color: var(--seal); border: 1px solid var(--seal); border-radius: 6px; }
+.err .errnew:hover { background: var(--seal); color: var(--bg); }
+
+.meta { display: flex; align-items: center; gap: 18px; margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--rule);
+  font: 11px var(--mono); color: var(--faint); letter-spacing: .4px; font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+.meta .v { color: var(--ink-2); }
+.meta .acts { margin-left: auto; display: flex; gap: 14px; }
+.meta .acts button { font: 11px var(--mono); color: var(--faint); letter-spacing: .5px; text-transform: uppercase; transition: color .2s; }
+.meta .acts button:hover { color: var(--seal); }
+
+/* ───────── empty state ───────── */
+#hero { padding: 13vh 0 0; animation: up .7s var(--ease) both; }
+#hero .kicker { font: 11px var(--mono); letter-spacing: 2.4px; color: var(--seal); text-transform: uppercase; margin-bottom: 18px; }
+#hero h1 { font: 400 clamp(40px, 6vw, 64px)/1.08 var(--serif); margin: 0 0 18px; letter-spacing: -.5px; color: var(--ink); }
+#hero h1 em { font-style: italic; color: var(--seal); }
+#hero p { color: var(--muted); max-width: 520px; margin: 0 0 42px; }
+.ideas { border-top: 1px solid var(--ink); }
+.idea { display: grid; grid-template-columns: 48px 1fr 24px; align-items: baseline; gap: 6px; padding: 16px 0; border-bottom: 1px solid var(--rule);
+  cursor: pointer; transition: padding .35s var(--ease), color .2s; color: var(--ink-2); opacity: 0; animation: up .6s var(--ease) forwards; }
+.idea .k { font: 11px var(--mono); color: var(--faint); letter-spacing: 1px; }
+.idea .arrow { color: var(--seal); opacity: 0; transform: translateX(-6px); transition: .35s var(--ease); }
+.idea:hover { padding-left: 10px; color: var(--ink); }
+.idea:hover .arrow { opacity: 1; transform: none; }
+.idea b { font-weight: 500; color: var(--ink); margin-right: 8px; }
+
+/* ───────── composer ───────── */
+#composer { flex: none; padding: 0 32px 22px; position: relative; }
+#composer::before { content: ""; position: absolute; left: 0; right: 0; top: -48px; height: 48px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--bg)); }
+.desk { max-width: 740px; margin: 0 auto; background: var(--card); border: 1px solid var(--rule-2); border-radius: 18px; box-shadow: var(--shadow);
+  padding: 14px 14px 10px 20px; transition: border-color .3s, box-shadow .3s; }
+.desk:focus-within { border-color: var(--ink-2); }
+#input { width: 100%; resize: none; border: 0; outline: 0; background: none; color: var(--ink); font: 16px/1.6 var(--sans); max-height: 240px; min-height: 26px; }
+#input::placeholder { color: var(--faint); }
+.row { display: flex; align-items: center; gap: 14px; margin-top: 8px; }
+.modes { display: flex; gap: 2px; position: relative; }
+.modes button { font: 12.5px var(--sans); color: var(--muted); padding: 5px 10px 7px; position: relative; transition: color .2s; }
+.modes button::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 2px; height: 1.5px; background: var(--seal); transform: scaleX(0);
+  transition: transform .35s var(--ease); }
+.modes button.on { color: var(--ink); }
+.modes button.on::after { transform: none; }
+.modes button:hover { color: var(--ink); }
+.sp { flex: 1; }
+.chars { font: 10.5px var(--mono); color: var(--faint); }
+#send { width: 40px; height: 40px; border-radius: 50%; background: var(--seal); color: #fff; display: grid; place-items: center;
+  transition: transform .3s var(--ease), opacity .2s, background .2s; box-shadow: 0 8px 20px -8px var(--seal); }
+#send:hover:not(:disabled) { transform: scale(1.06) rotate(-8deg); }
+#send:disabled { opacity: .25; box-shadow: none; cursor: default; }
+#send.stop { background: var(--ink); box-shadow: none; }
+.fine { max-width: 740px; margin: 9px auto 0; text-align: center; font: 10.5px var(--mono); color: var(--faint); letter-spacing: .6px; }
+
+/* ───────── settings ───────── */
+#veil { position: fixed; inset: 0; background: rgba(20, 16, 10, .28); backdrop-filter: blur(2px); opacity: 0; pointer-events: none; transition: opacity .35s var(--ease); z-index: 30; }
+#veil.on { opacity: 1; pointer-events: auto; }
+#panel { position: fixed; top: 14px; right: 14px; bottom: 14px; width: 340px; background: var(--card); border: 1px solid var(--rule-2); border-radius: 16px;
+  box-shadow: var(--shadow); transform: translateX(380px); transition: transform .45s var(--ease); z-index: 31; padding: 26px 26px; overflow-y: auto; }
+#panel.on { transform: none; }
+#panel h2 { font: 400 28px/1 var(--serif); margin: 0 0 6px; }
+#panel .sub { font: 10.5px var(--mono); letter-spacing: 1.6px; color: var(--muted); text-transform: uppercase; margin-bottom: 26px; }
+.f { padding: 14px 0; border-top: 1px solid var(--rule); }
+.f .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.f .top span { font-size: 13.5px; color: var(--ink-2); }
+.f .top b { font: 400 18px var(--serif); color: var(--ink); font-variant-numeric: tabular-nums; }
+.f input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: none; }
+.f input[type=range]::-webkit-slider-runnable-track { height: 1px; background: var(--rule-2); }
+.f input[type=range]::-moz-range-track { height: 1px; background: var(--rule-2); }
+.f input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--seal); margin-top: -7px;
+  box-shadow: 0 0 0 4px var(--seal-soft); }
+.f input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--seal); }
+.f textarea { width: 100%; min-height: 96px; resize: vertical; background: var(--bg); border: 1px solid var(--rule); border-radius: 10px; color: var(--ink);
+  font: 13.5px/1.6 var(--sans); padding: 10px 12px; outline: none; }
+.f textarea:focus { border-color: var(--ink-2); }
+.f p { margin: 6px 0 0; font-size: 12px; color: var(--muted); line-height: 1.55; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--rule-2); border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+@media (max-width: 820px) {
+  #rail { position: fixed; z-index: 20; height: 100%; box-shadow: var(--shadow); }
+  #flow { padding: 10px 18px 40px; } .a { margin-left: 0; } .q { grid-template-columns: 1fr; } .q .n { line-height: 1.6; }
+  #composer { padding: 0 12px 12px; } #head { padding: 0 14px; }
+}
+</style>
+</head>
+<body>
+<aside id="rail">
+  <div class="mark"><div class="seal">无界</div><div><div class="name">Boundless<i>v1</i></div><small>Qwen 3.8 · RTX 3090</small></div></div>
+  <button id="new"><span>新的对话</span><kbd>⌘ K</kbd></button>
+  <div class="label">目录</div>
+  <div id="convs"></div>
+  <div class="foot"><span class="live"><span class="pulse" id="pulse"></span><span id="state">连接中</span></span><button id="theme">墨</button></div>
+</aside>
+<main id="main">
+  <div id="head">
+    <button class="ghost" id="toggle" title="目录"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M4 12h10M4 17h16"/></svg></button>
+    <div id="title"></div>
+    <div id="speed" title="上一段回答的生成速度"><b>—</b>tok/s</div>
+    <button class="ghost" id="open" title="设置"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
+  </div>
+  <div id="scroll"><div id="flow"></div></div>
+  <div id="composer">
+    <div class="desk">
+      <textarea id="input" rows="1" placeholder="写点什么……"></textarea>
+      <div class="row">
+        <div class="modes" id="modes"><button data-v="">直答</button><button data-v="low">浅思</button><button data-v="medium">细想</button><button data-v="xhigh">深思</button></div>
+        <div class="sp"></div>
+        <span class="chars" id="chars"></span>
+        <button id="send" disabled title="发送"></button>
+      </div>
+    </div>
+    <div class="fine">ENTER 发送 · SHIFT+ENTER 换行 · 本地推理，内容不出局域网</div>
+  </div>
+</main>
+<div id="veil"></div>
+<aside id="panel">
+  <h2>调校</h2>
+  <div class="sub">Sampling · Drafting · Persona</div>
+  <div class="f"><div class="top"><span>温度 Temperature</span><b id="v_temp"></b></div><input type="range" id="temp" min="0" max="1.5" step="0.05"><p>0 为贪心解码：最快，结果可复现。</p></div>
+  <div class="f"><div class="top"><span>Top-p</span><b id="v_topp"></b></div><input type="range" id="topp" min="0.05" max="1" step="0.05"></div>
+  <div class="f"><div class="top"><span>Top-k</span><b id="v_topk"></b></div><input type="range" id="topk" min="1" max="256" step="1"></div>
+  <div class="f"><div class="top"><span>最长回答</span><b id="v_maxt"></b></div><input type="range" id="maxt" min="256" max="16384" step="256"></div>
+  <div class="f"><div class="top"><span>MTP 草稿</span><b id="v_spec"></b></div><input type="range" id="spec" min="0" max="3" step="1"><p>投机解码一次猜几个 token；不改变输出的分布，只影响速度。</p></div>
+  <div class="f"><div class="top"><span>人设 System</span></div><textarea id="system" placeholder="例如：你是一位克制、严谨的技术编辑，回答简洁。"></textarea></div>
+</aside>
+<script>
+const $ = s => document.querySelector(s);
+const ICON_SEND = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+const ICON_STOP = '<svg width="12" height="12" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3" fill="currentColor"/></svg>';
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('bl.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('bl.' + k, JSON.stringify(v)); } catch {} }
+};
+let cfg = Object.assign({ temp: 0.7, topp: 0.8, topk: 20, maxt: 4096, spec: 3, system: '', think: '' }, store.get('cfg', {}));
+let convs = store.get('convs', []), cur = store.get('cur', null), busy = null;
+let theme = store.get('theme', 'paper');
+const conv = () => convs.find(c => c.id === cur);
+const save = () => { store.set('convs', convs); store.set('cur', cur); };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+
+function applyTheme() {
+  document.documentElement.dataset.theme = theme;
+  $('#hl-paper').disabled = theme !== 'paper';
+  $('#hl-ink').disabled = theme !== 'ink';
+  $('#theme').textContent = theme === 'paper' ? '墨' : '纸';
+  $('#theme').title = theme === 'paper' ? '切换到墨色' : '切换到纸色';
+}
+$('#theme').onclick = () => { theme = theme === 'paper' ? 'ink' : 'paper'; store.set('theme', theme); applyTheme(); };
+applyTheme();
+$('#new kbd').textContent = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ K' : 'Ctrl K';
+
+marked.setOptions({ gfm: true, breaks: true });
+function md(text) {
+  const div = document.createElement('div');
+  div.className = 'prose';
+  div.innerHTML = DOMPurify.sanitize(marked.parse(text || ''));
+  div.querySelectorAll('pre > code').forEach(code => {
+    const lang = (code.className.match(/language-(\S+)/) || [])[1] || 'text';
+    const src = code.textContent;
+    const fig = svgFigure(lang, src);   // before highlighting: the raw source
+    try { hljs.highlightElement(code); } catch {}
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.innerHTML = `<span>${esc(lang)}</span><span>${fig ? '<button class="t">代码</button> ' : ''}<button class="cp">复制</button></span>`;
+    bar.querySelector('.cp').onclick = e => copy(src, e.target);
+    const pre = code.parentElement;
+    pre.prepend(bar);
+    if (fig) {
+      pre.classList.add('folded');
+      bar.querySelector('.t').onclick = () => pre.classList.toggle('folded');
+      pre.before(fig);
+    }
+  });
+  return div;
+}
+// a finished SVG code block (```svg, or code that is one <svg> element) drawn above it. The model's markup is
+// sanitized with DOMPurify's SVG profile: no scripts, event handlers or javascript: links
+function svgFigure(lang, src) {
+  const s = src.trim();
+  if (!/^(svg|xml|html)?$/i.test(lang === 'text' ? '' : lang) || !/^(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(s) || !/<\/svg>\s*$/i.test(s)) return null;
+  const clean = DOMPurify.sanitize(s, { USE_PROFILES: { svg: true, svgFilters: true } });
+  if (!/<svg/i.test(clean)) return null;
+  const fig = document.createElement('figure');
+  fig.className = 'svgfig';
+  fig.innerHTML = clean;
+  const svg = fig.querySelector('svg');
+  if (!svg) return null;
+  if (!svg.getAttribute('viewBox') && svg.getAttribute('width') && svg.getAttribute('height'))   // scale it down to fit
+    svg.setAttribute('viewBox', `0 0 ${parseFloat(svg.getAttribute('width'))} ${parseFloat(svg.getAttribute('height'))}`);
+  return fig;
+}
+function copy(text, btn) {
+  const done = () => { const t = btn.textContent; btn.textContent = '已复制'; setTimeout(() => btn.textContent = t, 1200); };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done);
+  else { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); done(); }
+}
+
+/* ───────── rendering ───────── */
+function renderRail() {
+  const box = $('#convs'); box.innerHTML = '';
+  convs.forEach((c, i) => {
+    const el = document.createElement('div');
+    el.className = 'conv' + (c.id === cur ? ' on' : '');
+    el.innerHTML = `<span class="no">${pad(convs.length - i)}</span><span class="t">${esc(c.title || '未命名')}</span><button class="x" title="删除">✕</button>`;
+    el.onclick = () => { if (busy) return; cur = c.id; save(); renderAll(); };
+    el.querySelector('.x').onclick = e => { e.stopPropagation(); if (busy) return; convs = convs.filter(x => x.id !== c.id); if (cur === c.id) cur = null; save(); renderAll(); };
+    box.appendChild(el);
+  });
+}
+function qNode(text, n) {
+  const el = document.createElement('div');
+  el.className = 'q';
+  el.innerHTML = `<div class="n">${pad(n)}</div><div class="text"></div>`;
+  el.querySelector('.text').textContent = text;
+  return el;
+}
+function aNode(m, live) { const el = document.createElement('div'); el.className = 'a'; fillA(el, m, live); return el; }
+function fillA(el, m, live) {
+  el.innerHTML = '';
+  if (m.reasoning) {
+    const d = document.createElement('details');
+    d.className = 'note';
+    const thinking = live && !m.content;
+    d.open = thinking || !!m._open;
+    d.ontoggle = () => { m._open = d.open; };
+    const secs = m.stats?.think_s ? ` · <span style="text-transform:none">${m.stats.think_s.toFixed(1)}s</span>` : '';
+    d.innerHTML = `<summary>${thinking ? '<span class="spin"></span>思索中' : '<span class="tri">▶</span>思索' + secs}</summary><div class="body"></div>`;
+    const b = d.querySelector('.body');
+    b.textContent = m.reasoning.trim();
+    el.appendChild(d);
+    if (thinking) requestAnimationFrame(() => b.scrollTop = b.scrollHeight);
+  }
+  if (m.content) {
+    const p = md(m.content);
+    if (live) (p.lastElementChild || p).classList.add('caret');
+    el.appendChild(p);
+  } else if (live && !m.reasoning) {
+    el.insertAdjacentHTML('beforeend', '<div class="waiting"><i></i><i></i><i></i></div>');
+  }
+  if (m.error) {
+    el.insertAdjacentHTML('beforeend', `<div class="err">${esc(m.error)}${m.errorNew ? '<button class="errnew">新的对话</button>' : ''}</div>`);
+    el.querySelector('.errnew')?.addEventListener('click', () => fresh());
+  }
+  if (!live) {
+    const st = m.stats || {}, parts = [];
+    if (st.tps) parts.push(`<span><span class="v">${st.tps.toFixed(1)}</span> tok/s</span>`);
+    if (st.ttft != null) parts.push(`<span>首字 <span class="v">${st.ttft.toFixed(2)}s</span></span>`);
+    if (st.tokens) parts.push(`<span><span class="v">${st.tokens}</span> tokens</span>`);
+    if (st.cached) parts.push(`<span>复用 <span class="v">${st.cached}</span></span>`);
+    if (st.stopped) parts.push('<span>已中止</span>');
+    el.insertAdjacentHTML('beforeend', `<div class="meta">${parts.join('')}<span class="acts"><button class="c">复制</button><button class="r">重写</button></span></div>`);
+    el.querySelector('.c').onclick = e => copy(m.content || '', e.target);
+    el.querySelector('.r').onclick = () => regenerate(m);
+  }
+}
+const ideas = [
+  ['写代码', '用 Python 写一个带 LRU 淘汰的缓存类，附简短的单元测试。'],
+  ['讲原理', '用通俗的语言解释：投机解码为什么能加速，却不改变输出？'],
+  ['做计划', '规划三天两夜的杭州行程：人少、安静、有好吃的。'],
+  ['画一幅画', '用 SVG 画一只小猫坐在河边钓鱼：有河水、钓竿和一条上钩的小鱼。只输出一个 svg 代码块。']
+];
+function renderFlow() {
+  const flow = $('#flow'); flow.innerHTML = '';
+  const c = conv();
+  if (!c || !c.msgs.length) {
+    const h = new Date().getHours();
+    const greet = h < 5 ? '夜深了' : h < 11 ? '早上好' : h < 14 ? '午安' : h < 18 ? '下午好' : '晚上好';
+    flow.innerHTML = `<div id="hero"><div class="kicker">${greet} · Local intelligence</div>
+      <h1>想聊点什么？<br><em>Boundless</em> 在听。</h1>
+      <p>一台 3090，一个 125B 参数的混合专家模型（每个 token 激活 6B），所有计算都在这台机器上完成。</p>
+      <div class="ideas">${ideas.map(([k, q], i) => `<div class="idea" style="animation-delay:${.15 + i * .07}s" data-q="${esc(q)}">
+        <span class="k">${pad(i + 1)}</span><span><b>${k}</b>${esc(q)}</span><span class="arrow">→</span></div>`).join('')}</div></div>`;
+    flow.querySelectorAll('.idea').forEach(el => el.onclick = () => { $('#input').value = el.dataset.q; grow(); send(); });
+  } else {
+    let n = 0;
+    for (const m of c.msgs) flow.appendChild(m.role === 'user' ? qNode(m.content, ++n) : aNode(m, false));
+  }
+  $('#title').textContent = c?.title || '';
+  down(true);
+}
+function renderAll() { renderRail(); renderFlow(); }
+function down(force) { const s = $('#scroll'); if (force || s.scrollHeight - s.scrollTop - s.clientHeight < 180) s.scrollTop = s.scrollHeight; }
+
+/* ───────── the server ───────── */
+// what this page can show that the model would not otherwise know: it draws svg code blocks (svgFigure)
+const PAGE_HINT = '这个聊天界面会把 svg 代码块直接显示成图片。用户请你画画、画图或画插画时，不要说自己不能生成图片，' +
+  '而是用 SVG 作画：输出一个完整的 ```svg 代码块（带 viewBox，图形丰富、配色协调），代码块前后最多各一句话。';
+async function ask(c, bot, el) {
+  const messages = [];
+  const sys = [PAGE_HINT, cfg.system.trim()].filter(Boolean).join('\n\n');
+  messages.push({ role: 'system', content: sys });
+  for (const m of c.msgs) {
+    if (m === bot) break;
+    if (m.role === 'user') messages.push({ role: 'user', content: m.content });
+    else if (!m.error) messages.push({ role: 'assistant', content: m.content || '', reasoning_content: m.reasoning || undefined });
+  }
+  const body = { model: 'boundless', messages, stream: true, temperature: cfg.temp, top_p: cfg.topp, top_k: cfg.topk, max_tokens: cfg.maxt, spec: cfg.spec };
+  if (cfg.think) body.reasoning_effort = cfg.think === 'xhigh' ? 'high' : cfg.think;
+  busy = new AbortController(); mode(true);
+  const t0 = performance.now();
+  let tFirst = null, tAnswer = null, usage = null, finish = null, chunks = 0, queued = false;
+  let done = false;   // a repaint queued before the end must not draw the live state over the final one
+  const paint = () => { queued = false; if (!done) { fillA(el, bot, true); down(); } };
+  try {
+    const res = await fetch('/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: busy.signal });
+    if (!res.ok) {
+      let msg = '服务返回 ' + res.status;
+      try { msg = (await res.json()).error.message || msg; } catch {}
+      throw Object.assign(new Error(msg), { server: true });
+    }
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2);
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (data === '[DONE]') continue;
+        const j = JSON.parse(data);
+        if (j.error) throw Object.assign(new Error(j.error.message), { server: true });
+        if (j.usage) usage = j.usage;
+        const ch = j.choices?.[0];
+        if (ch?.finish_reason) finish = ch.finish_reason;
+        const d = ch?.delta || {};
+        if (d.reasoning_content) { bot.reasoning = (bot.reasoning || '') + d.reasoning_content; chunks++; }
+        if (d.content) { if (tAnswer === null) tAnswer = performance.now(); bot.content += d.content; chunks++; }
+        if ((d.content || d.reasoning_content) && tFirst === null) tFirst = performance.now();
+        if (!queued) { queued = true; requestAnimationFrame(paint); }
+      }
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') bot.stopped = true;
+    else if (e.server) {   // the service is up and said no
+      bot.errorNew = /longer than the context|context full/i.test(e.message);
+      bot.error = bot.errorNew ? '这个对话已经超过模型的上下文长度，没法再接着聊了。新开一个对话就可以继续。'
+                               : '服务报告了一个错误：' + e.message;
+    } else bot.error = '连不上服务：' + e.message + '。服务还在运行吗？';
+  }
+  const t1 = performance.now(), tokens = usage?.completion_tokens ?? chunks;
+  bot.stats = { ttft: tFirst ? (tFirst - t0) / 1000 : null, tps: tFirst && tokens > 1 ? (tokens - 1) / ((t1 - tFirst) / 1000) : null, tokens,
+                cached: usage?.prompt_tokens_details?.cached_tokens || 0, think_s: bot.reasoning && tFirst ? ((tAnswer || t1) - tFirst) / 1000 : null,
+                stopped: !!bot.stopped || finish === 'length' };
+  if (bot.stats.tps) $('#speed b').textContent = bot.stats.tps.toFixed(1);
+  done = true;
+  busy = null; mode(false); fillA(el, bot, false); save(); down();
+}
+async function send() {
+  const text = $('#input').value.trim();
+  if (!text || busy) return;
+  let c = conv();
+  if (!c) { c = { id: Date.now().toString(36), title: '', msgs: [] }; convs.unshift(c); cur = c.id; }
+  if (!c.title) c.title = text.replace(/\s+/g, ' ').slice(0, 30);
+  c.msgs.push({ role: 'user', content: text });
+  const bot = { role: 'assistant', content: '', reasoning: '' };
+  c.msgs.push(bot);
+  $('#input').value = ''; grow(); save(); renderRail();
+  const flow = $('#flow');
+  if (flow.querySelector('#hero')) flow.innerHTML = '';
+  $('#title').textContent = c.title;
+  flow.appendChild(qNode(text, c.msgs.filter(m => m.role === 'user').length));
+  const el = aNode(bot, true); flow.appendChild(el); down(true);
+  await ask(c, bot, el);
+}
+async function regenerate(m) {
+  if (busy) return;
+  const c = conv(), i = c ? c.msgs.indexOf(m) : -1;
+  if (i < 0) return;
+  c.msgs.splice(i);
+  const bot = { role: 'assistant', content: '', reasoning: '' };
+  c.msgs.push(bot);
+  renderFlow();
+  const el = $('#flow').lastElementChild; fillA(el, bot, true);
+  await ask(c, bot, el);
+}
+function mode(on) {
+  const b = $('#send');
+  b.classList.toggle('stop', on); b.innerHTML = on ? ICON_STOP : ICON_SEND; b.title = on ? '停止' : '发送';
+  b.disabled = !on && !$('#input').value.trim();
+}
+
+/* ───────── controls ───────── */
+function grow() {
+  const t = $('#input'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 240) + 'px';
+  const n = t.value.length; $('#chars').textContent = n ? n + ' 字' : '';
+  if (!busy) $('#send').disabled = !t.value.trim();
+}
+$('#input').addEventListener('input', grow);
+$('#input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+$('#send').onclick = () => busy ? busy.abort() : send();
+const fresh = () => { if (busy) return; cur = null; save(); renderAll(); $('#input').focus(); };
+$('#new').onclick = fresh;
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); fresh(); }
+  if (e.key === 'Escape') panel(false);
+});
+$('#toggle').onclick = () => $('#rail').classList.toggle('hidden');
+const panel = on => { $('#panel').classList.toggle('on', on); $('#veil').classList.toggle('on', on); };
+$('#open').onclick = () => panel(true);
+$('#veil').onclick = () => panel(false);
+function slider(id, fmt) {
+  const el = $('#' + id), show = () => $('#v_' + id).textContent = fmt(cfg[id]);
+  el.value = cfg[id]; show();
+  el.oninput = () => { cfg[id] = Number(el.value); show(); store.set('cfg', cfg); };
+}
+slider('temp', v => v.toFixed(2)); slider('topp', v => v.toFixed(2)); slider('topk', v => v);
+slider('maxt', v => v.toLocaleString()); slider('spec', v => v ? v : '关');
+$('#system').value = cfg.system;
+$('#system').oninput = e => { cfg.system = e.target.value; store.set('cfg', cfg); };
+const modes = () => document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.v === cfg.think));
+document.querySelectorAll('#modes button').forEach(b => b.onclick = () => { cfg.think = b.dataset.v; store.set('cfg', cfg); modes(); });
+modes();
+async function ping() {
+  try {
+    const j = await (await fetch('/v1/models', { cache: 'no-store' })).json();
+    $('#pulse').className = 'pulse ok'; $('#state').textContent = '在线';
+  } catch { $('#pulse').className = 'pulse bad'; $('#state').textContent = '离线'; }
+}
+ping(); setInterval(ping, 15000);
+mode(false); renderAll(); $('#input').focus();
+</script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+// A conversation on top of the engine: messages -> the chat template -> tokens -> generate, streaming text out.
+// The engine keeps the session (KV, GDN states): when the new conversation's text extends what the session already
+// holds (the usual next turn), only the new part is fed; otherwise the session restarts from the whole conversation.
+#pragma once
+
+#include <functional>
+#include <string>
+#include <vector>
+
+#include "bl/engine.h"
+#include "bl/text.h"
+
+namespace bl {
+
+struct ChatParams {
+    Sampling    sampling;            // temperature 0: greedy
+    int         spec = 3;            // MTP drafts per round (0: none)
+    int         max_new = 4096;
+    std::string think;               // "" = no thinking; "low" / "medium" / "xhigh"
+};
+
+struct ChatResult {
+    std::string content, reasoning;
+    int    n_generated = 0;          // tokens, the end-of-generation one included
+    int    n_prompt = 0, n_reused = 0;   // prompt tokens fed / already in the session
+    bool   stopped_eog = false;      // ended by the model (else max_new or the context)
+    double prompt_s = 0, gen_s = 0;
+};
+
+class Chat {
+public:
+    Chat(Engine & e, const Text & t, int max_ctx);
+    // on_text(piece, is_reasoning) gets the text as it is generated; returning false stops the generation
+    ChatResult reply(const std::vector<Text::Message> & messages, const ChatParams & p,
+                     const std::function<bool(const std::string &, bool)> & on_text = nullptr);
+    void reset();
+    int  position() const { return eng_.position(); }
+
+private:
+    Engine &     eng_;
+    const Text & txt_;
+    int          max_ctx_;
+    int          think_end_ = -1;    // the </think> token
+    std::string  session_;           // the text the session holds (fed + generated)
+};
+
+}  // namespace bl

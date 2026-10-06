@@ -1,0 +1,1 @@
+ggml-common.h from llama.cpp 3cf03257f219afbe7334045ff7c6a06ac68c627d (MIT, see LICENSE): block layouts and codebook grids

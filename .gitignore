@@ -1,0 +1,9 @@
+# build output, models and runtime files
+build*/
+models/
+logs/
+*.nsys-rep
+*.ncu-rep
+*.sqlite
+*.logits
+__pycache__/

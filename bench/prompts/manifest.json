@@ -1,0 +1,24 @@
+{
+ "tokenizer": "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+ "template_sha256": "12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce",
+ "head": "<|im_start|>user\nHere is part of the source tree of an LLM inference engine.\n\n",
+ "tail": "\n\nTask: review the code above. Name the three most likely bugs or risks, each with the file, the function and a one-line fix.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+ "prompts": {
+  "1k": {
+   "tokens": 1000,
+   "sha256": "d673cba5722c4daad9d0fc5d2af2bf89e235098ca3d5b1f18b20cdcb272baf86"
+  },
+  "4k": {
+   "tokens": 4000,
+   "sha256": "e16623483077aacf14c0a30ee857ceff9017cc32b85ce19bb444fdccd1ba224b"
+  },
+  "32k": {
+   "tokens": 32000,
+   "sha256": "99c09d93335e5f89b143cb2a29fd95b71b9054441506ee0de10a0324f95a90c0"
+  },
+  "128k": {
+   "tokens": 128000,
+   "sha256": "3999d1ed4cf9b84f176af0ba1a0a98cc94214b1993c657489525f25d134076cf"
+  }
+ }
+}
