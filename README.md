@@ -128,8 +128,18 @@ in the chat: `/reset`, `/think low`, `/temp 0.3`, `/stats`, `/exit`.
 `--gpus 0,1` (all three programs) splits the layers between the GPUs: the first runs layers 0 to K-1, the next from K on,
 and the last one also runs the head and the MTP layer. Each GPU caches the routed experts of its own layers, so two
 cards hold about twice the experts; the residual crosses to the next card once per verify window, through pinned
-host memory (no NVLink or peer-to-peer access needed). `--layer-split K` picks K yourself (default `auto`: the K
-whose caches would hold the best-ranked experts). Without `--gpus` nothing changes.
+host memory (no NVLink or peer-to-peer access needed). Without `--gpus` nothing changes.
+
+- **`--layer-split auto`** (the default) also orders the cards: it places the experts for each candidate order and split
+  the way loading will and keeps the one whose caches hold the best-ranked experts (every order and split up to three
+  cards; beyond, the card with the most free VRAM last, then one boundary at a time). `--layer-split K1[,K2..]` keeps
+  your order and gives the first layer of each later card.
+- **Different cards** work together, e.g. an RTX 3090 and an RTX 5070: the smaller card gets fewer layers, the bigger
+  one the head and the MTP layer. Build for both architectures - `cmake -B build -DCMAKE_CUDA_ARCHITECTURES="86;120"`
+  (3090: 86, 40 series: 89, 50 series: 120; CUDA 12.8 or newer for 120). RTX 30 series or newer only.
+- **More cards** help the cache only until every expert fits: two 24 GB cards hold the most used ~80% of the expert
+  bytes, four hold all of them. The cards run one after another, so beyond that a card adds a hand-off per window
+  rather than speed - but it also takes its layers' KV cache, which helps long contexts.
 
 Status: checked as two stages on one GPU (`--gpus 0,0`) - decoding is token-for-token identical to one GPU, the
 prompt path within the run-to-run noise of one GPU - but **not yet run on two real GPUs**. One GPU spends about 30% of

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -535,7 +536,11 @@ struct Engine::Impl : Dev {
         if (gpus.empty()) gpus = {0};
         const int n = static_cast<int>(gpus.size()), L = c.n_layer;
         std::vector<int> first = split_opt.first_layer;
-        if (n > 1 && first.empty()) first = auto_split(gpus);
+        if (n > 1 && first.empty()) {   // auto: the order may change too
+            const SplitPlan p = auto_split(gpus);
+            gpus = p.gpus;
+            first = p.first;
+        }
         if (static_cast<int>(first.size()) != n - 1) throw std::runtime_error("--layer-split: give one first layer per GPU after the first");
         for (int s = 0; s + 1 < n; ++s)
             if (first[s] < 1 || first[s] >= L || (s && first[s] <= first[s - 1]))
@@ -574,11 +579,15 @@ struct Engine::Impl : Dev {
         return ranked_;
     }
 
-    // --layer-split auto. Two GPUs: every first layer K of the second is tried, placing the experts by rank the way
-    // load_experts() will - into each GPU's free VRAM less its layers' dense weights and KV cache, an allowance for its
-    // buffers, and the reserve - and the K whose caches hold the best-ranked experts wins (ties: the more even split).
-    // More GPUs: layers in proportion to free VRAM.
-    std::vector<int> auto_split(const std::vector<int> & gpus) {
+    // --layer-split auto: the order of the GPUs and the first layer of each after the first. A candidate is scored by
+    // placing the experts by rank the way load_experts() will - into each GPU's free VRAM less its layers' dense weights
+    // and KV cache, an allowance for its buffers, the head and the MTP layer on the last, and the reserve - and summing
+    // the placed experts' rank weights (the best-ranked count most). Ties: the fullest GPU keeps the most room (when
+    // every expert fits, as on four 24 GB cards), then the more even split. Up to three GPUs every order and every split
+    // is tried; beyond, the GPU with the most free VRAM goes last and the split starts in proportion to free VRAM, then
+    // moves one boundary by one layer at a time while that scores better.
+    struct SplitPlan { std::vector<int> gpus, first; long long score = -1, room = 0; int uneven = 0; };
+    SplitPlan auto_split(std::vector<int> gpus) {
         const int n = static_cast<int>(gpus.size()), L = c.n_layer, NE = c.n_expert;
         std::unordered_map<int, long long> free_of;
         for (int d : gpus) {
@@ -587,17 +596,6 @@ struct Engine::Impl : Dev {
             ck(cudaSetDevice(d), "cudaSetDevice");
             ck(cudaMemGetInfo(&fr, &to), "meminfo");
             free_of[d] = static_cast<long long>(fr);
-        }
-        std::vector<int> first;
-        if (n != 2) {
-            long long tot = 0;
-            for (int d : gpus) tot += free_of[d];
-            long long acc = 0;
-            for (int s = 0; s + 1 < n; ++s) {
-                acc += free_of[gpus[s]];
-                first.push_back(std::clamp(static_cast<int>(static_cast<double>(acc) / tot * L + 0.5), s + 1, L - (n - 1 - s)));
-            }
-            return first;
         }
         std::vector<long long> dense(L + 1, 0), exp_b(L, 0);   // per layer; dense[L]: the head, the final mixer
         for (const auto & t : g.tensors()) {
@@ -616,25 +614,83 @@ struct Engine::Impl : Dev {
         const long long reserve = (rs ? std::atoll(rs) : 1024) << 20, fixed = 1ll << 30;
         const char * cap = std::getenv("BL_EXPERT_CACHE_MB");
         const auto & rk = ranking();
-        long long best = -1;
-        int best_k = L / 2;
-        for (int k = 1; k < L; ++k) {
-            std::unordered_map<int, long long> bud;
-            for (auto [d, f] : free_of) bud[d] = f - reserve;
-            for (int il = 0; il < L; ++il) bud[gpus[il < k ? 0 : 1]] -= dense[il];
-            bud[gpus[0]] -= fixed;
-            bud[gpus[1]] -= fixed + dense[L] + mtp_bytes;
-            for (auto & [d, b] : bud) if (cap) b = std::min(b, std::atoll(cap) << 20);
-            long long score = 0;
+
+        auto eval = [&](const std::vector<int> & gp, const std::vector<int> & first) {
+            SplitPlan p{gp, first};
+            std::vector<int> slot(n);   // stage -> its GPU's budget (stages on one GPU share it)
+            std::vector<long long> bud;
+            for (int s = 0; s < n; ++s) {
+                const auto it = std::find(gp.begin(), gp.begin() + s, gp[s]);
+                slot[s] = it != gp.begin() + s ? slot[it - gp.begin()] : static_cast<int>(bud.size());
+                if (slot[s] == static_cast<int>(bud.size())) bud.push_back(free_of[gp[s]] - reserve);
+            }
+            std::vector<int> slot_of(L);   // layer -> budget
+            for (int il = 0, s = 0; il < L; ++il) {
+                while (s + 1 < n && il >= first[s]) ++s;
+                slot_of[il] = slot[s];
+                bud[slot[s]] -= dense[il];
+            }
+            for (int s = 0; s < n; ++s) bud[slot[s]] -= fixed;
+            bud[slot[n - 1]] -= dense[L] + mtp_bytes;
+            if (cap) for (auto & b : bud) b = std::min(b, std::atoll(cap) << 20);
+            p.score = 0;
             for (size_t i = 0; i < rk.size(); ++i) {
                 const int il = rk[i].first;
-                long long & b = bud[gpus[il < k ? 0 : 1]];
-                if (b >= exp_b[il]) { b -= exp_b[il]; score += static_cast<long long>(rk.size() - i); }
+                long long & b = bud[slot_of[il]];
+                if (b >= exp_b[il]) { b -= exp_b[il]; p.score += static_cast<long long>(rk.size() - i); }
             }
-            if (score > best || (score == best && std::abs(k - L / 2) < std::abs(best_k - L / 2))) { best = score; best_k = k; }
+            p.room = LLONG_MAX;
+            for (long long b : bud) p.room = std::min(p.room, b);
+            for (int s = 0; s < n; ++s) p.uneven += std::abs(((s + 1 < n ? first[s] : L) - (s ? first[s - 1] : 0)) * n - L);
+            return p;
+        };
+        auto better = [](const SplitPlan & a, const SplitPlan & b) {
+            if (a.score != b.score) return a.score > b.score;
+            if (a.room != b.room) return a.room > b.room;
+            return a.uneven < b.uneven;
+        };
+        SplitPlan best;
+        if (n <= 3) {
+            std::vector<int> order = gpus;
+            std::sort(order.begin(), order.end());
+            do {
+                if (n == 2) {
+                    for (int k = 1; k < L; ++k) if (auto p = eval(order, {k}); best.score < 0 || better(p, best)) best = p;
+                } else {
+                    for (int k1 = 1; k1 + 1 < L; ++k1)
+                        for (int k2 = k1 + 1; k2 < L; ++k2)
+                            if (auto p = eval(order, {k1, k2}); best.score < 0 || better(p, best)) best = p;
+                }
+            } while (std::next_permutation(order.begin(), order.end()));
+        } else {
+            const auto big = std::max_element(gpus.begin(), gpus.end(), [&](int x, int y) { return free_of[x] < free_of[y]; });
+            std::rotate(big, big + 1, gpus.end());   // the most free VRAM last, the others in the given order
+            long long tot = 0, acc = 0;
+            for (int d : gpus) tot += free_of[d];
+            std::vector<int> first;
+            for (int s = 0; s + 1 < n; ++s) {
+                acc += free_of[gpus[s]];
+                first.push_back(std::clamp(static_cast<int>(static_cast<double>(acc) / tot * L + 0.5), s + 1, L - (n - 1 - s)));
+                if (s && first[s] <= first[s - 1]) first[s] = first[s - 1] + 1;
+            }
+            best = eval(gpus, first);
+            for (bool moved = true; moved;) {
+                moved = false;
+                for (int s = 0; s + 1 < n; ++s)
+                    for (int dk : {-1, 1}) {
+                        std::vector<int> f = best.first;
+                        f[s] += dk;
+                        if (f[s] < (s ? f[s - 1] + 1 : 1) || f[s] > (s + 2 < n ? f[s + 1] - 1 : L - 1)) continue;
+                        if (auto p = eval(gpus, f); better(p, best)) { best = p; moved = true; }
+                    }
+            }
         }
-        std::fprintf(stderr, "layer split auto: the second GPU from layer %d\n", best_k);
-        return {best_k};
+        std::string m = "layer split auto: GPUs in the order";
+        for (int d : best.gpus) m += " " + std::to_string(d);
+        m += ", later ones from layer";
+        for (int k : best.first) m += " " + std::to_string(k);
+        std::fprintf(stderr, "%s\n", m.c_str());
+        return best;
     }
 
     void load() {
