@@ -215,6 +215,7 @@ size_t row_bytes_of(uint32_t t, int K) {
     switch (t) {
         case Q2_0:    return K / 64 * 18;
         case IQ4_NL:  return K / 32 * 18;
+        case IQ4_XS:  return K / 256 * 136;
         case IQ2_XXS: return K / 256 * 66;
         case IQ2_XS:  return K / 256 * 74;
         case IQ2_S:   return K / 256 * 82;
@@ -233,6 +234,7 @@ void dispatch(uint32_t t, A... a) {
         case IQ3_XXS: return Fn<IQ3_XXS>::run(a...);
         case IQ3_S:   return Fn<IQ3_S>::run(a...);
         case IQ4_NL:  return Fn<IQ4_NL>::run(a...);
+        case IQ4_XS:  return Fn<IQ4_XS>::run(a...);
         case Q2_0:    return Fn<Q2_0>::run(a...);
         default: throw std::runtime_error("expert format " + std::to_string(t) + " not supported");
     }

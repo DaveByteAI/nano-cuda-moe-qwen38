@@ -2,7 +2,7 @@
 # Everything the engine needs besides the code, into models/ (or $MODEL_DIR):
 #   1. the model: ISTA-DASLab's GSQ-RCO GGUF of Qwen3.8-Flash-Next, 2 files (resumable, SHA-256 checked: SKIP_SHA=1
 #      skips the ~5 minutes of hashing). The quantization is the argument, IQ3_XXS by default (the tested one):
-#        scripts/download_model.sh [IQ3_XXS | IQ2_XS | Q2_0]     (IQ3_S: not supported yet, see README)
+#        scripts/download_model.sh [IQ3_XXS | IQ3_S | IQ2_XS | Q2_0]
 #      The second file (the 28.8 GB n-gram table) is the same in all four: one already here is linked, not fetched.
 #   2. the MTP draft layer (speculative decoding): its tensors from the official BF16 checkpoint, ~5.5 GB by HTTP
 #      Range requests (tools/fetch_mtp.py), then packed into models/mtp-q2_0.gguf (build/bl-mtp-pack: build first)
@@ -22,10 +22,10 @@ case "$QUANT" in   # the first file's size and SHA-256 at REV
   Q2_0)    S1="37623740192 69820c02ec7d0b45ef2ebb19d6620299db749fe2aded7f39f93c6b88b199b720" ;;
   *) echo "unknown quantization $QUANT: IQ3_XXS (default), IQ3_S, IQ2_XS or Q2_0"; exit 2 ;;
 esac
-if [ "$QUANT" = IQ3_S ] && [ "${FORCE:-0}" != 1 ]; then   # (FORCE=1 downloads it anyway)
-  echo "IQ3_S is not supported yet: one layer's experts are IQ4_XS, which the GPU expert kernels do not handle"; exit 2
-fi
-[ "$QUANT" = IQ3_XXS ] || echo "note: only IQ3_XXS has been tested with this engine; $QUANT is unverified (the engine checks the formats at start)"
+case "$QUANT" in
+  IQ3_S) echo "note: IQ3_S runs (about 82 tok/s against IQ3_XXS's 97); its accuracy against llama.cpp is not measured" ;;
+  IQ2_XS|Q2_0) echo "note: $QUANT is untested with this engine (it checks the formats at start)" ;;
+esac
 S2="28800138432 316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113"
 P="Qwen3.8-Flash-Next-GSQ-RCO-$QUANT"
 FILES=("$P-00001-of-00002.gguf $S1" "$P-00002-of-00002.gguf $S2")

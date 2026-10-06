@@ -712,6 +712,9 @@ struct Engine::Impl : Dev {
                 upload_mat(n, need(n), fast_load && t.shard == 0);
         }
         const Tensor & ple = g.at("per_layer_token_embd.weight");   // the PLE table must exist (shard 2)
+        if (const Tensor & te = need("token_embd.weight"); !cuda::embed_supported(te.type_id))
+            throw std::runtime_error("token_embd.weight: format " + std::string(CpuExperts::type_name(te.type_id)) +
+                                     " is not handled by the embedding kernel - this model file is not supported");
         lap("dense weights");
 
         const int D = c.n_embd, HD = c.hc_dim();
@@ -1350,7 +1353,7 @@ struct Engine::Impl : Dev {
                 const char * why = !cuda::expert_supported(t->type_id) ? "the GPU's expert kernels"
                                  : !CpuExperts::supports(t->type_id) ? "the CPU's (ggml-cpu)" : nullptr;
                 if (why) throw std::runtime_error(t->name + ": expert format " + CpuExperts::type_name(t->type_id) + " is not handled by " +
-                                                  why + " - this model file is not supported (IQ2_XXS, IQ2_XS, IQ2_S, IQ3_XXS, IQ3_S, IQ4_NL, Q2_0 are)");
+                                                  why + " - this model file is not supported (IQ2_XXS, IQ2_XS, IQ2_S, IQ3_XXS, IQ3_S, IQ4_NL, IQ4_XS, Q2_0 are)");
             }
             lx[il] = {gt.type_id, dt.type_id, gt.nbytes / NE, dt.nbytes / NE};
             max_bytes = std::max(max_bytes, lx[il].bytes());

@@ -113,6 +113,21 @@ template <> __device__ __forceinline__ void decode32<IQ4_NL>(const uint8_t * row
     s0 = s1 = __half2float(b->d);
 }
 
+// sub-block sb of a 256-value super-block: IQ4_NL's 16 bytes of codes, each sub-block its own 6-bit scale
+template <> __device__ __forceinline__ void decode32<IQ4_XS>(const uint8_t * row, int sb, int * gv, float & s0, float & s1) {
+    const block_iq4_xs * b = reinterpret_cast<const block_iq4_xs *>(row) + sb / 8;
+    const int ib = sb % 8;
+    const uint8_t * qs = b->qs + 16 * ib;
+#pragma unroll
+    for (int l = 0; l < 4; ++l) {
+        const int2 v = table16(ld_b2(qs, l), reinterpret_cast<const int8_t *>(kvalues_iq4nl));
+        gv[l] = v.x;       // values 4l .. 4l+3
+        gv[l + 4] = v.y;   // values 16+4l ..
+    }
+    const int ls = ((b->scales_l[ib / 2] >> 4 * (ib % 2)) & 0xf) | (((b->scales_h >> 2 * ib) & 3) << 4);
+    s0 = s1 = __half2float(b->d) * static_cast<float>(ls - 32);
+}
+
 template <> __device__ __forceinline__ void decode32<Q2_0>(const uint8_t * row, int sb, int * gv, float & s0, float & s1) {
     const block_q2_0 * b = reinterpret_cast<const block_q2_0 *>(row) + sb / 2;
     const int16_t * qs = reinterpret_cast<const int16_t *>(b->qs) + (sb % 2) * 4;
