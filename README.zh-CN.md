@@ -92,6 +92,20 @@ scripts/download_model.sh          # 下载到 models/：75.8 GB 的 GGUF，然�
 [BF16 原版权重](https://huggingface.co/Qwen/Qwen3.8-Flash-Next)里取它的 31 个张量（不用下载 360 GB），再由
 `bl-mtp-pack` 把其中的专家量化成 Q2_0。国内网络：`HF_ENDPOINT=https://hf-mirror.com scripts/download_model.sh`。
 
+仓库里有四种量化，`scripts/download_model.sh 量化名` 选择其中一种（默认 IQ3_XXS）。第二个文件（28.8 GB 的
+n-gram 表）四种完全相同，脚本发现本地已有就直接链接，不再下载。
+
+| 量化 | 第一个文件 | 路由专家 | LRU 缓存需要的内存（专家 + 12 GB） | 状态 |
+|---|---|---|---|---|
+| **IQ3_XXS** | 47.0 GB | 43.0 GB | 55 GB | 已测试（本文所有数字） |
+| IQ2_XS | 39.2 GB | ≈ 35 GB | ≈ 47 GB | 未测试 |
+| Q2_0 | 37.6 GB | ≈ 33.5 GB | ≈ 46 GB | 未测试 |
+| IQ3_S | 54.8 GB | 50.3 GB | 62 GB | **暂不支持**：有一层的专家是 IQ4_XS |
+
+量化名只是个标签：每个文件都按层混用多种格式（IQ3_XXS 这个文件的专家用了 IQ2_XXS、IQ2_XS、IQ2_S、IQ3_XXS、IQ3_S，
+`down` 用 IQ4_NL 或 Q2_0）。引擎启动时会检查每个专家张量，遇到不支持的格式就停下来并报出张量名。文件越大，能放进
+显存的专家比例越小，解码越慢；文件越小解码越快，但精度会有损失。
+
 ### 3. 运行
 
 ```bash

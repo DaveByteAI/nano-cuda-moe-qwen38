@@ -26,6 +26,9 @@ public:
 
     int threads() const;
 
+    static bool supports(uint32_t type);           // ggml-cpu has the dot product for this expert format
+    static const char * type_name(uint32_t type);  // ggml's name ("iq3_xxs")
+
 private:
     struct Impl;
     std::unique_ptr<Impl> p_;

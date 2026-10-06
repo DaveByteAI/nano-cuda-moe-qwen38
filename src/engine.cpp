@@ -1346,6 +1346,12 @@ struct Engine::Impl : Dev {
             const Tensor & ut = need(p + "ffn_up_exps.weight");
             const Tensor & dt = need(p + "ffn_down_exps.weight");
             if (gt.type_id != ut.type_id) throw std::runtime_error(p + ": gate and up formats differ");
+            for (const Tensor * t : {&gt, &dt}) {   // every path that computes experts must handle the format, checked now
+                const char * why = !cuda::expert_supported(t->type_id) ? "the GPU's expert kernels"
+                                 : !CpuExperts::supports(t->type_id) ? "the CPU's (ggml-cpu)" : nullptr;
+                if (why) throw std::runtime_error(t->name + ": expert format " + CpuExperts::type_name(t->type_id) + " is not handled by " +
+                                                  why + " - this model file is not supported (IQ2_XXS, IQ2_XS, IQ2_S, IQ3_XXS, IQ3_S, IQ4_NL, Q2_0 are)");
+            }
             lx[il] = {gt.type_id, dt.type_id, gt.nbytes / NE, dt.nbytes / NE};
             max_bytes = std::max(max_bytes, lx[il].bytes());
             total += lx[il].bytes() * NE;

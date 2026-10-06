@@ -9,6 +9,8 @@
 namespace bl::cuda {
 
 bool supported(uint32_t type_id);
+// a routed expert format the GPU's expert kernels (decode windows and prefill) handle
+bool expert_supported(uint32_t type_id);
 
 // out[r*K + k] = W[r][k] as float, rows [0, M)
 void dequant_rows(uint32_t type_id, const void * W, size_t row_bytes, int M, int K, float * out, cudaStream_t s);
