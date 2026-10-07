@@ -31,8 +31,8 @@ Metal 在 16 GB 的 Mac mini 上运行 Qwen3.6-35B-A3B。两者出发点相同�
   （AVX2），显卡等映射内存里的一个标志。整个 decode 步骤是一个 CUDA graph。
 - **用模型自带的 MTP 层做投机解码。** 一次起草最多 3 个 token，主模型一遍 48 层把它们一起验证，平均每遍出 2.5–3 个
   token。采样时草稿在 GPU 上做拒绝采样，输出分布和不起草时完全相同。
-- **长上下文。** 用模型自带的稀疏注意力（索引器为每个位置挑出 2048 个位置），KV cache 用 int8。128K token 的提示词
-  每秒读约 1,600 个 token。
+- **长上下文，支持模型的完整 256K。** 用模型自带的稀疏注意力（索引器为每个位置挑出 2048 个位置），KV cache 用 int8。
+  128K token 的提示词读 78 秒，256K 读 165 秒（每秒约 1,550 个 token）。
 - **拿来就能用。** `bl-server` 兼容 OpenAI 的对话接口（流式输出、思考内容、多轮对话复用前缀），并提供聊天网页；
   `bl-chat` 是终端版本。
 
@@ -52,6 +52,8 @@ GGUF。贪心解码，每轮 3 个 MTP 草稿。
 | 生成速度，网页聊天（温度 0.7） | 92–104 tok/s |
 | 32K / 128K token 提示词之后的生成速度 | 82 / 75 tok/s |
 | 提示词处理，32K / 128K token | 18.0 s / 78 s |
+| 256K token 提示词（`--ctx 262144`）：读取 / 之后的生成速度 | 165 s / 66 tok/s |
+| （`--ctx 262144` 要给 KV cache 留 3.9 GB 显存：专家缓存从 17.5 GB 降到 14 GB，短对话的生成慢 5–12%） | |
 | 短问题的首字延迟 | 约 0.4 s |
 | 启动（从 NVMe 读 75.8 GB） | 约 25 s |
 | （启动后的第一个长提示词要从 SSD 读 n-gram 表：32K 时慢约 2 s） | |
@@ -121,7 +123,7 @@ build/bl-server --model models/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002
 
 | | |
 |---|---|
-| `--ctx N` | 上下文长度（默认 32768，测过 131072）。越长，留给专家缓存的显存越少 |
+| `--ctx N` | 上下文长度（默认 32768，最长测到 262144，即模型的上限）。越长，留给专家缓存的显存越少：262144 要占 3.9 GB |
 | `--expert-cache FILE` | 每次回复后保存显存里的专家缓存，下次启动时从它开始 |
 | `POST /v1/chat/completions` | `messages`、`stream`、`temperature`（0.7）、`top_p`（0.8）、`top_k`（20）、`max_tokens`、`seed`、`reasoning_effort` 或 `chat_template_kwargs.enable_thinking`；思考内容在 `reasoning_content` 里返回；`spec`（MTP 草稿数，0–3） |
 | `GET /v1/models`、`GET /health` | |

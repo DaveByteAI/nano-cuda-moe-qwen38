@@ -35,8 +35,8 @@ experts that are used most.
 - **Speculative decoding with the model's own MTP layer.** It drafts up to 3 tokens; one pass over the 48 layers
   checks them, about 2.5-3 tokens per pass. With sampling, the drafts go through rejection sampling on the GPU, so the
   output distribution is unchanged.
-- **Long context.** The model's sparse attention (an indexer picks 2048 positions per query) with an int8 KV cache:
-  128K-token prompts are read at ~1,600 tokens/s.
+- **Long context, up to the model's full 256K.** The model's sparse attention (an indexer picks 2048 positions per
+  query) with an int8 KV cache: a 128K-token prompt is read in 78 s, a 256K one in 165 s (~1,550 tokens/s).
 - **Usable.** `bl-server` speaks the OpenAI chat API (streaming, reasoning content, multi-turn prefix reuse) and serves
   a chat page; `bl-chat` is the terminal version.
 
@@ -56,6 +56,8 @@ GGUF. Greedy decoding, 3 MTP drafts per round.
 | Decode, chat in the web page (temperature 0.7) | 92-104 tok/s |
 | Decode after a 32K / 128K-token prompt | 82 / 75 tok/s |
 | Prompt processing, 32K / 128K tokens | 18.0 s / 78 s |
+| A 256K-token prompt (`--ctx 262144`): read / decode after it | 165 s / 66 tok/s |
+| (`--ctx 262144` keeps 3.9 GB for the KV cache: the expert cache drops from 17.5 to 14 GB, short chats decode 5-12% slower) | |
 | First token for a short question | ~0.4 s |
 | Startup (75.8 GB read from NVMe) | ~25 s |
 | (The first long prompt after a start reads the n-gram table from the SSD: ~2 s slower at 32K) | |
@@ -126,7 +128,7 @@ In the terminal: `build/bl-chat --model models/...-00001-of-00002.gguf`.
 
 | | |
 |---|---|
-| `--ctx N` | context length (default 32768; 131072 tested). A longer context leaves less VRAM for the expert cache |
+| `--ctx N` | context length (default 32768; up to 262144, the model's maximum, tested). A longer context leaves less VRAM for the expert cache: 262144 takes 3.9 GB of it |
 | `--expert-cache FILE` | save the VRAM expert cache after each reply and start from it next time |
 | `POST /v1/chat/completions` | `messages`, `stream`, `temperature` (0.7), `top_p` (0.8), `top_k` (20), `max_tokens`, `seed`, `reasoning_effort` or `chat_template_kwargs.enable_thinking`; thinking comes back as `reasoning_content`; `spec` (MTP drafts, 0-3) |
 | `GET /v1/models`, `GET /health` | |
